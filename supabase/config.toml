@@ -1,0 +1,13 @@
+project_id = "motema"
+
+[db]
+major_version = 15
+
+[api]
+enabled = true
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
