@@ -64,7 +64,15 @@ export async function getOnboardingSnapshot(): Promise<OnboardingSnapshot> {
       .select("underage_attempted_at")
       .eq("id", user.id)
       .single(),
-    supabase.from("profiles").select("*").eq("user_id", user.id).maybeSingle(),
+    // Liste explicite : la colonne `location` n'est plus lisible côté client
+    // (révocation column-level, cf. migration 0003) et le wizard n'en a pas besoin.
+    supabase
+      .from("profiles")
+      .select(
+        "user_id, display_name, birthdate, gender, bio, city, interested_in, age_min, age_max, onboarding_step, onboarding_completed_at",
+      )
+      .eq("user_id", user.id)
+      .maybeSingle(),
     supabase
       .from("profile_photos")
       .select("id, storage_path, position")

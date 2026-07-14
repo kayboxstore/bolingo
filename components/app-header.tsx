@@ -9,7 +9,7 @@ export function AppHeader() {
       <form action={signOut}>
         <button
           type="submit"
-          className="text-legend text-ink/70 underline-offset-2 hover:underline"
+          className="-m-2 p-2 text-legend text-ink/70 underline-offset-2 hover:underline"
         >
           Se déconnecter
         </button>

@@ -1,10 +1,16 @@
 import Link from "next/link";
 
 /**
- * Cœur Motema — contour 2 px, terminaisons arrondies, rose vif (#FF4B72).
- * Charte : ne pas déformer, ne pas recolorer, pas d'ombre portée.
+ * Cœur Motema — contour 2 px, terminaisons arrondies. Couleur via
+ * `currentColor` : rose vif (`text-accent`) par défaut d'usage (charte),
+ * blanc uniquement sur fond rose vif (bouton Like, cf. comp carte-profil-a).
+ * Dans le lockup logo : jamais recoloré (règle charte 01).
  */
-export function HeartIcon({ className = "h-6 w-6" }: { className?: string }) {
+export function HeartIcon({
+  className = "h-6 w-6 text-accent",
+}: {
+  className?: string;
+}) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -13,7 +19,7 @@ export function HeartIcon({ className = "h-6 w-6" }: { className?: string }) {
       strokeWidth={2}
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={`text-accent ${className}`}
+      className={className}
       aria-hidden="true"
     >
       {/* trait constant 2 px quelle que soit la taille de rendu (charte 05) */}
@@ -34,7 +40,7 @@ export function Logo({ className = "" }: { className?: string }) {
       aria-label="Motema — accueil"
     >
       {/* 24 px : grille icônes + zone de protection 1× cœur respectée avec gap-6 */}
-      <HeartIcon className="h-6 w-6" />
+      <HeartIcon className="h-6 w-6 text-accent" />
       <span className="font-display text-2xl font-bold lowercase tracking-tight text-ink">
         motema
       </span>

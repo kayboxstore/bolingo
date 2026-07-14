@@ -38,6 +38,7 @@ export default async function DiscoverPage() {
     <div className="flex min-h-screen flex-col bg-white">
       <AppHeader />
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-6 px-6 py-8">
+        <h1 className="sr-only">Découvrir</h1>
         <DiscoveryFilters
           defaults={{
             maxDistanceKm: profile.max_distance_km,
@@ -45,7 +46,10 @@ export default async function DiscoverPage() {
             ageMax: profile.age_max,
           }}
         />
-        <DiscoverDeck initial={batch} key={JSON.stringify(profile)} />
+        <DiscoverDeck
+          initial={batch}
+          key={`${profile.max_distance_km}-${profile.age_min}-${profile.age_max}`}
+        />
       </main>
     </div>
   );

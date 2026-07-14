@@ -62,7 +62,7 @@ export function DiscoverDeck({ initial }: { initial: DiscoveryBatch }) {
   if (!current) {
     return (
       <div className="flex flex-col items-center gap-6 rounded-card border border-ink/10 bg-white p-6 text-center shadow-sm">
-        <HeartIcon className="h-12 w-12" />
+        <HeartIcon className="h-12 w-12 text-accent" />
         <div className="flex flex-col gap-2">
           <h2 className="font-display text-h3 text-ink">
             Plus de profils pour l&apos;instant
@@ -86,34 +86,40 @@ export function DiscoverDeck({ initial }: { initial: DiscoveryBatch }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <ProfileCard card={current} />
-      <div className="flex items-center justify-center gap-6">
-        <button
-          type="button"
-          onClick={() => act("pass")}
-          disabled={isPending}
-          aria-label={`Passer ${current.displayName}`}
-          className="flex h-14 w-14 items-center justify-center rounded-full border border-ink/15 text-ink transition hover:border-ink/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/25 disabled:border-ink/10 disabled:text-ink/40"
-        >
-          <XIcon className="h-6 w-6" />
-        </button>
-        {/* Cœur rose vif (territoire de l'accent) sur bouton fantôme — pas de
-            recoloration du cœur, le rose CTA reste réservé aux CTA pleins. */}
-        <button
-          type="button"
-          onClick={() => act("like")}
-          disabled={isPending}
-          aria-label={`Liker ${current.displayName}`}
-          className="flex h-14 w-14 items-center justify-center rounded-full border border-ink/15 transition hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/25 disabled:border-ink/10 disabled:opacity-40"
-        >
-          <HeartIcon className="h-6 w-6" />
-        </button>
-      </div>
-      {cards.length <= REFILL_THRESHOLD && !exhausted && (
-        <p className="text-center text-legend text-ink/70" aria-live="polite">
-          Chargement de nouveaux profils…
-        </p>
-      )}
+      <ProfileCard
+        card={current}
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={() => act("pass")}
+              disabled={isPending}
+              aria-label={`Passer ${current.displayName}`}
+              className="flex h-14 w-14 items-center justify-center rounded-full border border-ink/15 text-ink transition hover:border-ink/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-40"
+            >
+              <XIcon className="h-6 w-6" />
+            </button>
+            {/* Comp carte-profil-a : cercle plein rose vif, cœur blanc
+                (contraste non-textuel 3,2:1 ✔ ; le rose CTA reste réservé
+                aux CTA pleins rectangulaires). */}
+            <button
+              type="button"
+              onClick={() => act("like")}
+              disabled={isPending}
+              aria-label={`Aimer ${current.displayName}`}
+              className="flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-40"
+            >
+              <HeartIcon className="h-6 w-6 text-white" />
+            </button>
+          </>
+        }
+      />
+      {/* Région live toujours montée (sinon ignorée par les lecteurs d'écran) */}
+      <p className="text-center text-legend text-ink/70" aria-live="polite">
+        {cards.length <= REFILL_THRESHOLD && !exhausted
+          ? "Chargement de nouveaux profils…"
+          : " "}
+      </p>
     </div>
   );
 }
