@@ -38,6 +38,10 @@ export function ArrowRightIcon({ className }: { className?: string }) {
   return <Icon path="M5 12h14m0 0-6-6m6 6-6 6" className={className} />;
 }
 
+export function XIcon({ className }: { className?: string }) {
+  return <Icon path="M6 6l12 12M18 6L6 18" className={className} />;
+}
+
 export function TrashIcon({ className }: { className?: string }) {
   return (
     <Icon

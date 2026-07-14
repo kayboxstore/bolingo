@@ -1,5 +1,4 @@
-import { Logo } from "@/components/brand/logo";
-import { signOut } from "@/lib/auth/actions";
+import { AppHeader } from "@/components/app-header";
 
 export default function OnboardingLayout({
   children,
@@ -8,17 +7,7 @@ export default function OnboardingLayout({
 }) {
   return (
     <div className="flex min-h-screen flex-col bg-white">
-      <header className="flex items-center justify-between border-b border-ink/10 px-6 py-4">
-        <Logo />
-        <form action={signOut}>
-          <button
-            type="submit"
-            className="text-legend text-ink/70 underline-offset-2 hover:underline"
-          >
-            Se déconnecter
-          </button>
-        </form>
-      </header>
+      <AppHeader />
       <main className="flex flex-1 flex-col px-6 py-8">{children}</main>
     </div>
   );
