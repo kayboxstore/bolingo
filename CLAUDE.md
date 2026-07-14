@@ -78,6 +78,16 @@ Key rules baked into the DB:
 - Account deletion is **soft** (`status='deleted'` + PII scrub); reports about a user survive their deletion.
 - `likes` RLS never leaks `pass` rows; a reported user can never read reports about them.
 
+## Règle de sécurité — Base de données de production
+
+Le MCP Supabase peut être disponible dans certaines sessions. Il est STRICTEMENT INTERDIT d'utiliser cet accès pour :
+- Appliquer une migration sur le projet Supabase réel
+- Exécuter du SQL en écriture (INSERT/UPDATE/DELETE/seed/purge) sur le projet réel
+- Modifier des permissions, policies, ou schémas sur le projet réel
+
+...sans confirmation EXPLICITE de l'utilisateur pour cette action précise, à chaque fois. Les migrations sont écrites en fichiers dans supabase/migrations/ et appliquées uniquement par l'utilisateur lui-même via `supabase db push`, sauf demande contraire explicite et ponctuelle de sa part.
+La lecture seule (advisors, list_migrations, inspection de schéma) reste autorisée sans confirmation.
+
 ## Security notes
 
 - Secrets only in `.env.local` (gitignored). `.env.example` documents the required vars.
