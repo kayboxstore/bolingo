@@ -1,19 +1,24 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import type { User } from "@supabase/supabase-js";
+import { SESSION_COOKIE_OPTIONS } from "@/lib/supabase/server";
 
 type CookieToSet = { name: string; value: string; options: CookieOptions };
 
 /**
- * Refreshes the Supabase auth session and syncs the session cookie on every
- * request. Call from the root `middleware.ts`.
+ * Refreshes the Supabase auth session on every request and returns the
+ * current user so the root middleware can apply route guards.
  */
-export async function updateSession(request: NextRequest) {
+export async function updateSession(
+  request: NextRequest,
+): Promise<{ response: NextResponse; user: User | null }> {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      cookieOptions: SESSION_COOKIE_OPTIONS,
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -33,7 +38,9 @@ export async function updateSession(request: NextRequest) {
 
   // Do not run code between createServerClient and getUser() — it keeps the
   // session fresh and avoids hard-to-debug logout bugs.
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  return response;
+  return { response, user };
 }
