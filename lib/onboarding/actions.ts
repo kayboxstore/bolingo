@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { randomUUID } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { geocodeCity } from "@/lib/onboarding/geocode";
-import { sniffImageType } from "@/lib/onboarding/photos";
+import { reencodeImage, sniffImageType } from "@/lib/onboarding/photos";
 import {
   basicsSchema,
   bioSchema,
@@ -22,7 +22,8 @@ const GENERIC_ERROR = "Une erreur est survenue. Réessaie dans un instant.";
 
 /**
  * Toutes les actions du wizard passent par ce garde : utilisateur authentifié,
- * email vérifié, et JAMAIS d'écriture si le blocage mineur est posé.
+ * email vérifié, compte actif, profil non finalisé, et JAMAIS d'écriture si
+ * le blocage mineur est posé.
  */
 async function requireWritableUser() {
   const supabase = createClient();
@@ -32,12 +33,27 @@ async function requireWritableUser() {
   if (!user) redirect("/login");
   if (!user.email_confirmed_at) redirect("/verify-email");
 
-  const { data: account } = await supabase
-    .from("users")
-    .select("underage_attempted_at")
-    .eq("id", user.id)
-    .single();
+  const [{ data: account }, { data: profile }] = await Promise.all([
+    supabase
+      .from("users")
+      .select("underage_attempted_at, status")
+      .eq("id", user.id)
+      .single(),
+    supabase
+      .from("profiles")
+      .select("onboarding_completed_at")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+  ]);
+
   if (account?.underage_attempted_at) redirect("/onboarding/blocked");
+  if (account && account.status !== "active") {
+    await supabase.auth.signOut();
+    redirect("/login");
+  }
+  // Profil déjà validé : le wizard est terminé, plus aucune écriture
+  // (l'édition post-création sera une brique dédiée).
+  if (profile?.onboarding_completed_at) redirect("/onboarding");
 
   return { supabase, user };
 }
@@ -53,23 +69,35 @@ function fieldErrorsOf(error: {
   return out;
 }
 
-/** Fait avancer la progression (jamais reculer — on peut re-modifier une étape). */
+/**
+ * Fait avancer la progression (jamais reculer — on peut re-modifier une étape)
+ * et renvoie la progression résultante : si l'utilisateur ré-édite une étape
+ * depuis le récap, on le renvoie directement au récap.
+ */
 async function advanceStep(
   supabase: ReturnType<typeof createClient>,
   userId: string,
   completedStep: number,
-) {
+): Promise<number> {
   const { data: profile } = await supabase
     .from("profiles")
     .select("onboarding_step")
     .eq("user_id", userId)
     .maybeSingle();
-  if (profile && profile.onboarding_step < completedStep) {
+  const current = profile?.onboarding_step ?? 0;
+  if (profile && current < completedStep) {
     await supabase
       .from("profiles")
       .update({ onboarding_step: completedStep })
       .eq("user_id", userId);
+    return completedStep;
   }
+  return Math.max(current, completedStep);
+}
+
+/** Cible de redirection après sauvegarde d'une étape. */
+function nextPathAfter(step: number, resultingStep: number, fallback: string) {
+  return resultingStep >= 5 && step < 5 ? "/onboarding/review" : fallback;
 }
 
 // ================================================================ 1 · PHOTOS
@@ -105,11 +133,17 @@ export async function uploadPhoto(
     return { error: "Format non pris en charge : JPEG, PNG ou WebP uniquement." };
   }
 
+  // Ré-encodage : strip EXIF/GPS, dimensions bornées, anti-polyglotte.
+  const clean = await reencodeImage(bytes, kind);
+  if (!clean) {
+    return { error: "Cette image est illisible ou corrompue. Essaie une autre photo." };
+  }
+
   // Chemin non énumérable : {uid}/{uuid}.{ext} dans un bucket privé.
   const path = `${user.id}/${randomUUID()}.${kind.ext}`;
   const { error: uploadError } = await supabase.storage
     .from(BUCKET)
-    .upload(path, bytes, { contentType: kind.mime });
+    .upload(path, clean, { contentType: kind.mime });
   if (uploadError) {
     return { error: "L'envoi a échoué. Vérifie ta connexion et réessaie." };
   }
@@ -131,35 +165,20 @@ export async function uploadPhoto(
 }
 
 export async function deletePhoto(formData: FormData): Promise<void> {
-  const { supabase, user } = await requireWritableUser();
+  const { supabase } = await requireWritableUser();
   const id = String(formData.get("id") ?? "");
   if (!id) return;
 
-  const { data: photo } = await supabase
-    .from("profile_photos")
-    .select("storage_path")
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (!photo) return;
+  // Suppression + renumérotation ATOMIQUES côté DB (position 0 = principale
+  // garantie). L'objet Storage est purgé ensuite ; en cas d'échec il reste un
+  // orphelin inoffensif dans un bucket privé (balayage périodique à prévoir).
+  const { data: removedPath, error } = await supabase.rpc(
+    "delete_photo_and_compact",
+    { photo: id },
+  );
+  if (error || !removedPath) return;
 
-  await supabase.from("profile_photos").delete().eq("id", id);
-  await supabase.storage.from(BUCKET).remove([photo.storage_path]);
-
-  // Compacte les positions pour que 0 reste la photo principale.
-  const { data: rest } = await supabase
-    .from("profile_photos")
-    .select("id, position")
-    .eq("user_id", user.id)
-    .order("position");
-  for (const [index, row] of (rest ?? []).entries()) {
-    if (row.position !== index) {
-      await supabase
-        .from("profile_photos")
-        .update({ position: index })
-        .eq("id", row.id);
-    }
-  }
+  await supabase.storage.from(BUCKET).remove([removedPath as string]);
 
   revalidatePath("/onboarding/photos");
 }
@@ -195,8 +214,8 @@ export async function continueFromPhotos(): Promise<void> {
     .select("id", { count: "exact", head: true })
     .eq("user_id", user.id);
   if (!count || count < 1) redirect("/onboarding/photos"); // min 1 requise
-  await advanceStep(supabase, user.id, 1);
-  redirect("/onboarding/basics");
+  const step = await advanceStep(supabase, user.id, 1);
+  redirect(nextPathAfter(1, step, "/onboarding/basics"));
 }
 
 // ========================================================== 2 · INFOS DE BASE
@@ -226,24 +245,28 @@ export async function saveBasics(
     if (paths.length > 0) {
       await supabase.storage.from(BUCKET).remove(paths);
     }
-    await supabase.rpc("record_underage_attempt"); // supprime aussi les lignes
+    // Supprime aussi les lignes profil/photos. L'échec du flag est bloquant :
+    // on ne doit jamais montrer l'écran « bloqué » sans que le flag soit posé.
+    const { error: rpcError } = await supabase.rpc("record_underage_attempt");
+    if (rpcError) return { error: GENERIC_ERROR };
     redirect("/onboarding/blocked");
   }
 
+  // NB : onboarding_step absent du payload — advanceStep gère la progression
+  // sans jamais la faire régresser (ré-édition depuis le récap).
   const { error } = await supabase.from("profiles").upsert(
     {
       user_id: user.id,
       display_name: parsed.data.displayName,
       birthdate: parsed.data.birthdate,
       gender: parsed.data.gender,
-      onboarding_step: 2,
     },
     { onConflict: "user_id" },
   );
   if (error) return { error: GENERIC_ERROR };
 
-  await advanceStep(supabase, user.id, 2);
-  redirect("/onboarding/bio");
+  const step = await advanceStep(supabase, user.id, 2);
+  redirect(nextPathAfter(2, step, "/onboarding/bio"));
 }
 
 // ==================================================================== 3 · BIO
@@ -263,8 +286,8 @@ export async function saveBio(
     .eq("user_id", user.id);
   if (error) return { error: GENERIC_ERROR };
 
-  await advanceStep(supabase, user.id, 3);
-  redirect("/onboarding/preferences");
+  const step = await advanceStep(supabase, user.id, 3);
+  redirect(nextPathAfter(3, step, "/onboarding/preferences"));
 }
 
 // ============================================================ 4 · PRÉFÉRENCES
@@ -292,8 +315,8 @@ export async function savePreferences(
     .eq("user_id", user.id);
   if (error) return { error: GENERIC_ERROR };
 
-  await advanceStep(supabase, user.id, 4);
-  redirect("/onboarding/location");
+  const step = await advanceStep(supabase, user.id, 4);
+  redirect(nextPathAfter(4, step, "/onboarding/location"));
 }
 
 // =========================================================== 5 · LOCALISATION
@@ -311,28 +334,46 @@ export async function saveLocation(
   let location: string | null = null;
   let cityLabel = parsed.data.city;
 
-  try {
-    const results = await geocodeCity(parsed.data.city, 1);
-    if (results.length > 0) {
-      const match = results[0];
-      cityLabel = match.city;
-      // WKT accepté par PostGIS pour une colonne geography(Point, 4326)
-      location = `SRID=4326;POINT(${match.longitude} ${match.latitude})`;
-    } else if (!force) {
-      // Ville non reconnue : message clair, l'utilisateur peut corriger
-      // ou continuer sans géolocalisation.
-      return {
-        error:
-          "Ville non reconnue. Vérifie l'orthographe, ou continue sans géolocalisation.",
-      };
+  // Suggestion choisie dans l'autocomplete : on honore SES coordonnées
+  // (re-géocoder « Montreuil » pourrait retomber sur un homonyme). Les valeurs
+  // sont re-validées : bornes géographiques + le libellé doit correspondre.
+  const selCity = String(formData.get("selectedCity") ?? "");
+  const selLat = Number(formData.get("selectedLat"));
+  const selLon = Number(formData.get("selectedLon"));
+  const hasSelection =
+    selCity === parsed.data.city &&
+    Number.isFinite(selLat) &&
+    Number.isFinite(selLon) &&
+    Math.abs(selLat) <= 90 &&
+    Math.abs(selLon) <= 180;
+
+  if (hasSelection) {
+    location = `SRID=4326;POINT(${selLon} ${selLat})`;
+  } else {
+    try {
+      const results = await geocodeCity(parsed.data.city, 1);
+      if (results.length > 0) {
+        const match = results[0];
+        cityLabel = match.city;
+        // WKT accepté par PostGIS pour une colonne geography(Point, 4326)
+        location = `SRID=4326;POINT(${match.longitude} ${match.latitude})`;
+      } else if (!force) {
+        // Ville non reconnue : message clair, l'utilisateur peut corriger
+        // ou continuer sans géolocalisation.
+        return {
+          code: "city_not_found",
+          error:
+            "Ville non reconnue. Vérifie l'orthographe, ou continue sans géolocalisation.",
+        };
+      }
+    } catch (cause) {
+      // Échec technique du géocodage : on ne bloque PAS le parcours ;
+      // loggé pour revue (sans données sensibles — la ville seule).
+      console.error(
+        `[geocode] failed for city ${JSON.stringify(parsed.data.city)}:`,
+        cause instanceof Error ? cause.message : cause,
+      );
     }
-  } catch (cause) {
-    // Échec technique du géocodage : on ne bloque PAS le parcours ;
-    // loggé pour revue (sans données sensibles — la ville seule).
-    console.error(
-      `[geocode] failed for city ${JSON.stringify(parsed.data.city)}:`,
-      cause instanceof Error ? cause.message : cause,
-    );
   }
 
   const { error } = await supabase

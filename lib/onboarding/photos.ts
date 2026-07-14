@@ -1,3 +1,5 @@
+import sharp from "sharp";
+
 /**
  * Détection du type d'image par MAGIC BYTES — jamais par extension ni par le
  * Content-Type fourni par le client. Aligné sur `allowed_mime_types` du bucket.
@@ -42,4 +44,42 @@ export function sniffImageType(bytes: Uint8Array): ImageKind | null {
   }
 
   return null;
+}
+
+const MAX_DIMENSION = 2048;
+
+/**
+ * Ré-encode l'image côté serveur avant stockage. En un seul passage :
+ * - supprime TOUTES les métadonnées (EXIF, dont coordonnées GPS — enjeu de
+ *   sécurité physique pour une app de rencontre) ;
+ * - applique l'orientation EXIF puis borne les dimensions (anti
+ *   decompression-bomb) ;
+ * - neutralise les fichiers polyglottes (payload ajouté après l'image).
+ * Renvoie null si le fichier n'est pas une image décodable.
+ */
+export async function reencodeImage(
+  bytes: Uint8Array,
+  kind: ImageKind,
+): Promise<Uint8Array | null> {
+  try {
+    const pipeline = sharp(bytes, { limitInputPixels: 64_000_000 })
+      .rotate() // applique l'orientation EXIF avant de jeter les métadonnées
+      .resize({
+        width: MAX_DIMENSION,
+        height: MAX_DIMENSION,
+        fit: "inside",
+        withoutEnlargement: true,
+      });
+
+    const encoded =
+      kind.mime === "image/png"
+        ? pipeline.png()
+        : kind.mime === "image/webp"
+          ? pipeline.webp({ quality: 85 })
+          : pipeline.jpeg({ quality: 85, mozjpeg: true });
+
+    return new Uint8Array(await encoded.toBuffer());
+  } catch {
+    return null;
+  }
 }

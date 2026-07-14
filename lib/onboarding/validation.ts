@@ -14,28 +14,29 @@ export const BIO_MAX = 500;
 export const PHOTOS_MAX = 6;
 export const PHOTO_MAX_BYTES = 5 * 1024 * 1024; // 5 Mo — aligné sur le bucket
 
-/** Âge en années révolues à la date du jour. */
+/** Âge en années révolues à la date du jour (calendrier UTC de bout en bout). */
 export function ageOf(birthdate: Date): number {
   const today = new Date();
-  let age = today.getFullYear() - birthdate.getFullYear();
+  let age = today.getUTCFullYear() - birthdate.getUTCFullYear();
   const beforeBirthday =
-    today.getMonth() < birthdate.getMonth() ||
-    (today.getMonth() === birthdate.getMonth() &&
-      today.getDate() < birthdate.getDate());
+    today.getUTCMonth() < birthdate.getUTCMonth() ||
+    (today.getUTCMonth() === birthdate.getUTCMonth() &&
+      today.getUTCDate() < birthdate.getUTCDate());
   if (beforeBirthday) age -= 1;
   return age;
 }
 
+// Les dates implausibles (futur, âge < 13, âge > 120) sont des erreurs de
+// SAISIE — rejetées ici, AVANT le test de minorité. Le blocage légal définitif
+// ne doit jamais se déclencher sur une faute de frappe (il est irréversible).
 const birthdateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Date invalide.")
   .refine((value) => {
     const date = new Date(`${value}T00:00:00Z`);
-    return !Number.isNaN(date.getTime());
-  }, "Date invalide.")
-  .refine((value) => {
-    const date = new Date(`${value}T00:00:00Z`);
-    return ageOf(date) <= 120;
+    if (Number.isNaN(date.getTime())) return false;
+    const age = ageOf(date);
+    return age >= 13 && age <= 120;
   }, "Date invalide.");
 
 /**
@@ -87,6 +88,8 @@ export const locationSchema = z.object({
 /** État renvoyé par les Server Actions du wizard. */
 export type WizardState = {
   error?: string;
+  /** Discriminant machine (l'UI ne doit jamais dépendre du texte du message). */
+  code?: "city_not_found";
   fieldErrors?: Record<string, string[]>;
 };
 

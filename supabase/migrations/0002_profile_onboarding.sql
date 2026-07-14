@@ -29,8 +29,95 @@ alter table public.profiles
 alter table public.users
   add column if not exists underage_attempted_at timestamptz;
 
+-- email/phone restent des miroirs d'auth.users (mis à jour par les flux Auth) :
+-- les laisser modifiables ouvrirait un oracle d'énumération via la contrainte
+-- unique (PATCH de son propre email vers celui d'une victime → 409 si existe).
 revoke update on table public.users from authenticated;
-grant update (email, phone, last_active_at) on table public.users to authenticated;
+revoke update on table public.users from anon;
+grant update (last_active_at) on table public.users to authenticated;
+
+-- Helpers SECURITY DEFINER pour les policies (les sous-requêtes inline sur
+-- public.users sont étranglées par la RLS users_select_self).
+create or replace function public.is_underage_blocked(uid uuid)
+returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1 from public.users u
+    where u.id = uid and u.underage_attempted_at is not null
+  );
+$$;
+
+create or replace function public.user_is_active(uid uuid)
+returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1 from public.users u where u.id = uid and u.status = 'active'
+  );
+$$;
+
+-- « Profil publiquement visible » — prédicat unique partagé par les policies.
+create or replace function public.profile_publicly_visible(uid uuid)
+returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1
+    from public.profiles p
+    join public.users u on u.id = p.user_id
+    where p.user_id = uid
+      and p.is_visible
+      and p.deleted_at is null
+      and p.onboarding_completed_at is not null
+      and u.status = 'active'
+  );
+$$;
+
+-- Le blocage mineur est porté au NIVEAU RLS/STORAGE, pas seulement dans les
+-- server actions : même un appel PostgREST/Storage direct ne peut plus écrire
+-- de données de profil après le flag (« aucune donnée collectée »).
+drop policy if exists profiles_insert_own on public.profiles;
+create policy profiles_insert_own on public.profiles
+  for insert with check (
+    auth.uid() = user_id and not public.is_underage_blocked(auth.uid())
+  );
+
+drop policy if exists profiles_update_own on public.profiles;
+create policy profiles_update_own on public.profiles
+  for update using (auth.uid() = user_id)
+  with check (
+    auth.uid() = user_id and not public.is_underage_blocked(auth.uid())
+  );
+
+drop policy if exists photos_write_own on public.profile_photos;
+create policy photos_write_own on public.profile_photos
+  for all using (auth.uid() = user_id)
+  with check (
+    auth.uid() = user_id and not public.is_underage_blocked(auth.uid())
+  );
+
+-- Les métadonnées photos ne fuient plus pour les profils invisibles /
+-- incomplets / supprimés : même prédicat de visibilité que profiles_select.
+drop policy if exists photos_select on public.profile_photos;
+create policy photos_select on public.profile_photos
+  for select using (
+    auth.uid() = user_id
+    or (
+      moderation_status = 'approved'
+      and public.profile_publicly_visible(user_id)
+      and not public.blocks_between(auth.uid(), user_id)
+    )
+  );
+
+-- Corrige profiles_select (0001) : sa sous-requête inline sur public.users
+-- était toujours fausse pour autrui à cause de la RLS — helper DEFINER.
+drop policy if exists profiles_select on public.profiles;
+create policy profiles_select on public.profiles
+  for select using (
+    auth.uid() = user_id
+    or (
+      is_visible
+      and deleted_at is null
+      and onboarding_completed_at is not null
+      and not public.blocks_between(auth.uid(), user_id)
+      and public.user_is_active(user_id)
+    )
+  );
 
 -- Records an underage attempt for the CALLER only and scrubs any profile data
 -- already collected for that account (photo rows; storage objects are removed
@@ -89,6 +176,15 @@ begin
     end if;
   end if;
 
+  -- primary_photo_path ne peut pointer que vers une photo de l'utilisateur.
+  if new.primary_photo_path is not null and not exists (
+    select 1 from public.profile_photos p
+    where p.user_id = new.user_id
+      and p.storage_path = new.primary_photo_path
+  ) then
+    raise exception 'primary photo must be one of the user''s photos';
+  end if;
+
   return new;
 end;
 $$;
@@ -107,8 +203,8 @@ alter table public.profile_photos
   add constraint profile_photos_user_id_position_key
     unique (user_id, position) deferrable initially immediate;
 
--- SECURITY INVOKER : la RLS s'applique — l'appelant ne peut toucher que ses
--- propres photos (les UPDATE ne matchent 0 ligne sinon, et on le détecte).
+-- SECURITY INVOKER : la RLS s'applique, ET la propriété est vérifiée
+-- explicitement (row count contrôlé — jamais de swap silencieusement partiel).
 create or replace function public.swap_photo_positions(photo_a uuid, photo_b uuid)
 returns void
 language plpgsql
@@ -117,22 +213,68 @@ as $$
 declare
   pos_a smallint;
   pos_b smallint;
+  updated integer;
 begin
   set constraints public.profile_photos_user_id_position_key deferred;
 
-  select position into pos_a from public.profile_photos where id = photo_a;
-  select position into pos_b from public.profile_photos where id = photo_b;
+  select position into pos_a from public.profile_photos
+    where id = photo_a and user_id = auth.uid();
+  select position into pos_b from public.profile_photos
+    where id = photo_b and user_id = auth.uid();
   if pos_a is null or pos_b is null then
-    raise exception 'photo not found';
+    raise exception 'photo not found or not owned';
   end if;
 
-  update public.profile_photos set position = pos_b where id = photo_a;
-  update public.profile_photos set position = pos_a where id = photo_b;
+  update public.profile_photos set position = pos_b
+    where id = photo_a and user_id = auth.uid();
+  get diagnostics updated = row_count;
+  if updated <> 1 then raise exception 'swap failed'; end if;
+
+  update public.profile_photos set position = pos_a
+    where id = photo_b and user_id = auth.uid();
+  get diagnostics updated = row_count;
+  if updated <> 1 then raise exception 'swap failed'; end if;
 end;
 $$;
 
 revoke all on function public.swap_photo_positions(uuid, uuid) from public;
 grant execute on function public.swap_photo_positions(uuid, uuid) to authenticated;
+
+-- Suppression + renumérotation ATOMIQUES (position 0 = photo principale doit
+-- toujours exister s'il reste des photos). Renvoie le chemin storage à purger.
+create or replace function public.delete_photo_and_compact(photo uuid)
+returns text
+language plpgsql
+set search_path = ''
+as $$
+declare
+  removed_path text;
+begin
+  set constraints public.profile_photos_user_id_position_key deferred;
+
+  delete from public.profile_photos
+    where id = photo and user_id = auth.uid()
+    returning storage_path into removed_path;
+  if removed_path is null then
+    raise exception 'photo not found or not owned';
+  end if;
+
+  with renumbered as (
+    select id, row_number() over (order by position) - 1 as new_position
+    from public.profile_photos
+    where user_id = auth.uid()
+  )
+  update public.profile_photos p
+     set position = r.new_position
+    from renumbered r
+   where p.id = r.id and p.position <> r.new_position;
+
+  return removed_path;
+end;
+$$;
+
+revoke all on function public.delete_photo_and_compact(uuid) from public;
+grant execute on function public.delete_photo_and_compact(uuid) to authenticated;
 
 -- ------------------------------------------------------------- storage bucket
 -- Private bucket; size and MIME limits are enforced server-side by Supabase.

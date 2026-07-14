@@ -31,7 +31,7 @@ function Row({
       </div>
       <Link
         href={href}
-        className="text-legend font-medium text-brand hover:text-brand-hover"
+        className="text-legend text-brand hover:text-brand-hover"
       >
         Modifier
       </Link>
@@ -47,7 +47,7 @@ export default async function ReviewPage() {
   const paths = snapshot.photos.map((p) => p.storage_path);
   const { data: signed } =
     paths.length > 0
-      ? await supabase.storage.from("profile-photos").createSignedUrls(paths, 3600)
+      ? await supabase.storage.from("profile-photos").createSignedUrls(paths, 900)
       : { data: [] };
 
   const genderLabel = profile.gender
@@ -75,18 +75,25 @@ export default async function ReviewPage() {
             Photos ({snapshot.photos.length})
           </p>
           <div className="grid grid-cols-3 gap-2">
-            {snapshot.photos.map((photo, index) => (
-              <img
-                key={photo.id}
-                src={signed?.[index]?.signedUrl ?? ""}
-                alt={`Photo ${index + 1}`}
-                className="aspect-square w-full rounded-btn object-cover"
-              />
-            ))}
+            {snapshot.photos.map((photo, index) =>
+              signed?.[index]?.signedUrl ? (
+                <img
+                  key={photo.id}
+                  src={signed[index].signedUrl}
+                  alt={`Photo ${index + 1}`}
+                  className="aspect-square w-full rounded-btn object-cover"
+                />
+              ) : (
+                <div
+                  key={photo.id}
+                  className="aspect-square w-full rounded-btn bg-disabled"
+                />
+              ),
+            )}
           </div>
           <Link
             href="/onboarding/photos"
-            className="self-end text-legend font-medium text-brand hover:text-brand-hover"
+            className="self-end text-legend text-brand hover:text-brand-hover"
           >
             Modifier
           </Link>

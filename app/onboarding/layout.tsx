@@ -13,7 +13,7 @@ export default function OnboardingLayout({
         <form action={signOut}>
           <button
             type="submit"
-            className="text-legend font-medium text-ink/60 underline-offset-2 hover:underline"
+            className="text-legend text-ink/70 underline-offset-2 hover:underline"
           >
             Se déconnecter
           </button>

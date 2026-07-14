@@ -55,6 +55,10 @@ supabase/
 - **Buttons are set in Poppins SemiBold** (`font-display font-semibold`), matching the charte comps.
 - Muted text on white: use `ink/60` minimum for legend-size (13px), `ink/70` preferred; `ink/40` only for
   genuinely disabled controls (WCAG exemption).
+- **Progress indicators use `accent` rose vif** (feedback element), never CTA rose — CTA rose stays the
+  "pressable" signal. **Text badges use CTA rose** (`bg-brand text-brand-fg`, AA 4.6:1) — rose vif fails AA
+  as a text background. Non-interactive badges may use `py-1` (target-size rules don't apply).
+- Structural icons: shared 24px 2px-stroke set in `components/brand/icons.tsx` — never Unicode glyphs.
 
 ## Data model (see migration for the source of truth)
 
@@ -83,3 +87,11 @@ Key rules baked into the DB:
   the account exists or not; login errors are generic.
 - Rate limiting relies on Supabase Auth built-in limits (mapped to clear FR messages). If abuse appears,
   add a per-IP/email throttle (KV) in front of signUp/forgotPassword/resendVerification.
+- **Profile photos are re-encoded server-side on upload** (`sharp`): EXIF/GPS stripped, dimensions capped,
+  polyglot payloads neutralized. Never store a user-supplied image buffer verbatim.
+- **The underage block is enforced in RLS and Storage policies** (`is_underage_blocked()`), not only in
+  server actions — a flagged account cannot write profile data even via direct PostgREST/Storage calls.
+  The 18+ gate is layered: zod (plausibility window rejects typos before the irreversible flag) → DB CHECK →
+  completion trigger → permanent flag (column-revoked). Age remains self-declared (ID check = future brick).
+- Geocoding goes through `/api/geocode` (authenticated, throttled per-user + global, cached) — Nominatim's
+  1 req/s policy applies to the whole app. In-memory limiter: move to shared KV before scale.

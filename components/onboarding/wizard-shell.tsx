@@ -21,12 +21,21 @@ export function WizardShell({
         <p className="text-legend text-ink/70">
           Étape {step + 1} sur {STEP_TITLES.length} · {STEP_TITLES[step]}
         </p>
-        <div className="flex gap-2" role="presentation">
+        <div
+          className="flex gap-2"
+          role="progressbar"
+          aria-valuenow={step + 1}
+          aria-valuemin={1}
+          aria-valuemax={STEP_TITLES.length}
+          aria-label="Progression du profil"
+        >
           {STEP_TITLES.map((label, index) => (
+            // Indicateur de progression : rose vif accent (pas le rose CTA,
+            // réservé aux éléments appuyables) — décision v1.1.
             <span
               key={label}
               className={`h-2 flex-1 rounded-full ${
-                index <= step ? "bg-brand" : "bg-disabled"
+                index <= step ? "bg-accent" : "bg-disabled"
               }`}
             />
           ))}

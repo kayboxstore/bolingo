@@ -14,7 +14,7 @@ export default async function PhotosPage() {
   const paths = snapshot.photos.map((p) => p.storage_path);
   const { data: signed } =
     paths.length > 0
-      ? await supabase.storage.from("profile-photos").createSignedUrls(paths, 3600)
+      ? await supabase.storage.from("profile-photos").createSignedUrls(paths, 900)
       : { data: [] };
 
   const photos = snapshot.photos.map((photo, index) => ({

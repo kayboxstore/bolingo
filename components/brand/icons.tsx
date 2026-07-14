@@ -1,0 +1,48 @@
+/**
+ * Icônes structurelles — charte 05 : contour 2 px, terminaisons arrondies,
+ * grille 24 px, charbon par défaut (la couleur suit `currentColor`).
+ */
+
+function Icon({
+  path,
+  className = "h-6 w-6",
+  label,
+}: {
+  path: string;
+  className?: string;
+  label?: string;
+}) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden={label ? undefined : true}
+      aria-label={label}
+      role={label ? "img" : undefined}
+    >
+      <path vectorEffect="non-scaling-stroke" d={path} />
+    </svg>
+  );
+}
+
+export function ArrowLeftIcon({ className }: { className?: string }) {
+  return <Icon path="M19 12H5m0 0 6-6m-6 6 6 6" className={className} />;
+}
+
+export function ArrowRightIcon({ className }: { className?: string }) {
+  return <Icon path="M5 12h14m0 0-6-6m6 6-6 6" className={className} />;
+}
+
+export function TrashIcon({ className }: { className?: string }) {
+  return (
+    <Icon
+      path="M4 7h16M10 11v6m4-6v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"
+      className={className}
+    />
+  );
+}
