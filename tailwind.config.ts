@@ -22,6 +22,9 @@ const config: Config = {
         accent: "#FF4B72", // Rose vif — cœurs, notifications, logo
         ink: "#111111", // Charbon — texte, titres, icônes
         disabled: "#F3F3F4", // Boutons désactivés
+        // Hors charte v1.0 (proposé v1.1) : rouge sémantique d'erreur, AA à 13px,
+        // distinct du rose CTA pour ne pas ressembler à un lien.
+        error: "#B3261E",
       },
       borderRadius: {
         card: "1rem",

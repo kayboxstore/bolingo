@@ -36,15 +36,15 @@ export function Field({
         required
         aria-invalid={hasError || undefined}
         aria-describedby={hasError ? errorId : hint ? hintId : undefined}
-        className="w-full rounded-btn border border-ink/15 bg-white px-4 py-3 text-body text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/25 aria-[invalid]:border-brand"
+        className="w-full rounded-btn border border-ink/15 bg-white px-4 py-4 text-body text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/25 aria-[invalid]:border-error"
       />
       {hint && !hasError && (
-        <p id={hintId} className="text-legend text-ink/50">
+        <p id={hintId} className="text-legend text-ink/70">
           {hint}
         </p>
       )}
       {hasError && (
-        <p id={errorId} className="text-legend text-brand" role="alert">
+        <p id={errorId} className="text-legend text-error" role="alert">
           {errors!.join(" ")}
         </p>
       )}

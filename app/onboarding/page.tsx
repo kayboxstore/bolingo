@@ -31,14 +31,15 @@ export default async function OnboardingPage() {
       <section className="flex flex-1 flex-col items-center justify-center gap-6 px-6 text-center">
         <HeartIcon className="h-12 w-12" />
         <div className="flex max-w-md flex-col gap-2">
-          <h1 className="font-display text-h2 text-ink">Bienvenue sur Motema</h1>
+          <h1 className="font-display text-h1 text-ink">Bienvenue sur Motema</h1>
           <p className="text-body text-ink/70">
             Ton compte {user?.email && <strong className="text-ink">{user.email}</strong>} est
             vérifié. Prochaine étape : complète ton profil pour commencer les
             rencontres — cette partie arrive très bientôt.
           </p>
         </div>
-        <span className="rounded-btn bg-disabled px-4 py-3 font-display text-body font-semibold text-ink/40">
+        {/* Texte informatif (pas un contrôle désactivé) : contraste AA requis. */}
+        <span className="rounded-btn bg-disabled px-4 py-2 font-display text-body font-semibold text-ink/60">
           Complète ton profil — à venir
         </span>
       </section>

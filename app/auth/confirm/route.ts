@@ -53,17 +53,19 @@ export async function GET(request: NextRequest) {
 
 /**
  * N'accepte que des chemins internes — jamais d'URL absolue (open redirect).
- * Le backslash est rejeté : le parseur WHATWG traite `/\evil.com` comme
- * `//evil.com`.
+ * Les contrôles de préfixe ne suffisent pas (le parseur WHATWG supprime
+ * TAB/LF/CR et traite `\` comme `/`) : on valide l'ORIGINE de l'URL résolue.
  */
 function sanitizeNext(next: string | null): string | null {
-  if (!next) return null;
-  if (!next.startsWith("/") || next.startsWith("//") || next.includes("\\")) {
-    return null;
-  }
+  if (!next || !next.startsWith("/") || /[\\\t\n\r]/.test(next)) return null;
   return next;
 }
 
 function redirect(request: NextRequest, target: string) {
-  return NextResponse.redirect(new URL(target, request.url));
+  const url = new URL(target, request.url);
+  // Ceinture et bretelles : jamais de redirection hors du site.
+  if (url.origin !== new URL(request.url).origin) {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+  return NextResponse.redirect(url);
 }
