@@ -106,9 +106,16 @@ La lecture seule (advisors, list_migrations, inspection de schéma) reste autori
 - **Profile photos are re-encoded server-side on upload** (`sharp`): EXIF/GPS stripped, dimensions capped,
   polyglot payloads neutralized. Never store a user-supplied image buffer verbatim.
 - **The underage block is enforced in RLS and Storage policies** (`is_underage_blocked()`), not only in
-  server actions — a flagged account cannot write profile data even via direct PostgREST/Storage calls.
-  The 18+ gate is layered: zod (plausibility window rejects typos before the irreversible flag) → DB CHECK →
-  completion trigger → permanent flag (column-revoked). Age remains self-declared (ID check = future brick).
+  server actions — a flagged account cannot write profile data even via direct PostgREST/Storage calls
+  (tables in 0002/0003; the storage *upload* policy in 0005). The 18+ gate is layered: zod (plausibility
+  window rejects typos before the irreversible flag) → DB CHECK → completion trigger → permanent flag
+  (column-revoked). Age remains self-declared (ID check = future brick).
+- **`record_underage_attempt()` is deliberately `/rpc`-exposed to `authenticated`** (audited): the wizard
+  calls it through PostgREST, so it cannot live in the private schema. It is safe by construction — no
+  parameters, every statement scoped to `auth.uid()`, flag is write-once (`coalesce` + column revoke), so
+  the worst a caller can do is flag *themselves* (same effect as declaring a minor birthdate). Known wart:
+  a direct call skips the server action's Storage cleanup, leaving the caller's photo *objects* orphaned in
+  the private bucket — add a periodic sweep job (rows are deleted; objects are unreachable via the app).
 - Geocoding goes through `/api/geocode` (authenticated, throttled per-user + global, cached) — Nominatim's
   1 req/s policy applies to the whole app. In-memory limiter: move to shared KV before scale.
 - **`profiles.location` is not client-readable** (column-level SELECT revoke): clients get only the
