@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { loadDiscoveryBatch } from "@/lib/discover/queries";
+import { countUnseenMatches } from "@/lib/matches/queries";
 import { AppHeader } from "@/components/app-header";
 import { DiscoverDeck } from "@/components/discover/deck";
 import { DiscoveryFilters } from "@/components/discover/filters";
@@ -32,11 +33,14 @@ export default async function DiscoverPage() {
   // Prérequis produit : profil complet avant la découverte.
   if (!profile?.onboarding_completed_at) redirect("/onboarding");
 
-  const batch = await loadDiscoveryBatch();
+  const [batch, unseenMatches] = await Promise.all([
+    loadDiscoveryBatch(),
+    countUnseenMatches(),
+  ]);
 
   return (
     <div className="flex min-h-screen flex-col bg-white">
-      <AppHeader />
+      <AppHeader nav unseenMatches={unseenMatches} />
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-6 px-6 py-8">
         <h1 className="sr-only">Découvrir</h1>
         <DiscoveryFilters

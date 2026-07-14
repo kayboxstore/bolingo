@@ -50,16 +50,20 @@ const verdictSchema = z.object({
  * + ignoreDuplicates neutralisent double-tap et courses. Un profil devenu
  * invisible/suspendu entre chargement et action ne fait pas échouer l'action
  * (le like est inoffensif ; le profil disparaît des lots suivants).
+ *
+ * Renvoie `matched: true` quand le match existe — notification in-app à
+ * chaud. La lecture est effectuée pour CHAQUE like, réciproque ou non :
+ * coût constant, pas d'oracle temporel sur « qui m'a liké ».
  */
 export async function submitVerdict(
   likeeId: string,
   verdict: "like" | "pass",
-): Promise<{ ok: boolean }> {
+): Promise<{ ok: boolean; matched: boolean }> {
   const { supabase, user } = await requireDiscoveryUser();
 
   const parsed = verdictSchema.safeParse({ likeeId, verdict });
-  if (!parsed.success) return { ok: false };
-  if (parsed.data.likeeId === user.id) return { ok: false };
+  if (!parsed.success) return { ok: false, matched: false };
+  if (parsed.data.likeeId === user.id) return { ok: false, matched: false };
 
   // RLS likes_insert_own garantit liker_id = auth.uid() et l'absence de bloc.
   const { error } = await supabase.from("likes").upsert(
@@ -71,8 +75,22 @@ export async function submitVerdict(
     { onConflict: "liker_id,likee_id", ignoreDuplicates: true },
   );
 
+  let matched = false;
+  if (parsed.data.verdict === "like" && !error) {
+    // Paire canonique (uuid : l'ordre texte hexadécimal = l'ordre binaire PG).
+    const [a, b] = [user.id, parsed.data.likeeId].sort();
+    const { data: match } = await supabase
+      .from("matches")
+      .select("id")
+      .eq("user_a", a)
+      .eq("user_b", b)
+      .eq("status", "active")
+      .maybeSingle();
+    matched = Boolean(match);
+  }
+
   // Un échec RLS (bloc apparu entre-temps…) n'est pas une erreur utilisateur.
-  return { ok: !error };
+  return { ok: !error, matched };
 }
 
 /** Recharge un lot en excluant les cartes encore en main côté client. */

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { fetchMoreProfiles, submitVerdict } from "@/lib/discover/actions";
 import type { DiscoveryBatch, DiscoveryCard } from "@/lib/discover/queries";
@@ -18,6 +19,7 @@ export function DiscoverDeck({ initial }: { initial: DiscoveryBatch }) {
   const [exhausted, setExhausted] = useState(initial.exhausted);
   const [isPending, startTransition] = useTransition();
   const [isRefilling, setIsRefilling] = useState(false);
+  const [matchedWith, setMatchedWith] = useState<string | null>(null);
 
   const current = cards[0] ?? null;
 
@@ -38,11 +40,13 @@ export function DiscoverDeck({ initial }: { initial: DiscoveryBatch }) {
 
   function act(verdict: "like" | "pass") {
     if (!current || isPending) return;
+    const acted = current;
     const rest = cards.slice(1);
     // Avance optimiste : l'action est idempotente côté serveur.
     setCards(rest);
     startTransition(async () => {
-      await submitVerdict(current.userId, verdict);
+      const result = await submitVerdict(acted.userId, verdict);
+      if (result.matched) setMatchedWith(acted.displayName);
       if (rest.length <= REFILL_THRESHOLD) void refill(rest);
     });
   }
@@ -59,9 +63,47 @@ export function DiscoverDeck({ initial }: { initial: DiscoveryBatch }) {
     }
   }
 
+  const matchModal = matchedWith && (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="match-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 p-6"
+    >
+      <div className="flex w-full max-w-sm flex-col items-center gap-6 rounded-card bg-white p-6 text-center shadow-sm">
+        <HeartIcon className="h-12 w-12 text-accent" />
+        <div className="flex flex-col gap-2">
+          <h2 id="match-title" className="font-display text-h3 text-ink">
+            C&apos;est un match !
+          </h2>
+          <p className="text-body text-ink/70">
+            {matchedWith} et toi vous êtes aimés mutuellement.
+          </p>
+        </div>
+        <div className="flex w-full flex-col gap-2">
+          <Link
+            href="/matches"
+            className="w-full rounded-btn bg-brand px-4 py-4 text-center font-display text-body font-semibold text-brand-fg transition hover:bg-brand-hover"
+          >
+            Voir mes matches
+          </Link>
+          <button
+            type="button"
+            autoFocus
+            onClick={() => setMatchedWith(null)}
+            className="w-full rounded-btn border border-ink/15 px-4 py-4 font-display text-body font-semibold text-ink transition hover:border-ink/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+          >
+            Continuer à explorer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   if (!current) {
     return (
       <div className="flex flex-col items-center gap-6 rounded-card border border-ink/10 bg-white p-6 text-center shadow-sm">
+        {matchModal}
         <HeartIcon className="h-12 w-12 text-accent" />
         <div className="flex flex-col gap-2">
           <h2 className="font-display text-h3 text-ink">
@@ -86,6 +128,7 @@ export function DiscoverDeck({ initial }: { initial: DiscoveryBatch }) {
 
   return (
     <div className="flex flex-col gap-6">
+      {matchModal}
       <ProfileCard
         card={current}
         actions={
