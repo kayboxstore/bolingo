@@ -50,6 +50,12 @@ export function AppHeader({
             >
               Messages
             </Link>
+            <Link
+              href="/settings"
+              className="-m-2 rounded-btn p-2 text-legend text-ink/70 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+            >
+              Réglages
+            </Link>
           </nav>
         )}
         <form action={signOut}>

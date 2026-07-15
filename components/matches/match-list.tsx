@@ -5,6 +5,7 @@
 import { useOptimistic, useState, useTransition } from "react";
 import { unmatch } from "@/lib/matches/actions";
 import type { MatchItem } from "@/lib/matches/queries";
+import { ModerationMenu } from "@/components/moderation/moderation-menu";
 
 /**
  * Liste des matches. L'unmatch demande une confirmation en deux temps, puis
@@ -30,6 +31,14 @@ export function MatchList({ initial }: { initial: MatchItem[] }) {
       const formData = new FormData();
       formData.set("matchId", item.matchId);
       await unmatch(formData);
+    });
+  }
+
+  // Après blocage : la carte disparaît (le serveur masque déjà le match via
+  // blocks_between). L'overlay optimiste tient jusqu'au revalidatePath.
+  function onBlocked(item: MatchItem) {
+    startTransition(() => {
+      removeOptimistic(item.matchId);
     });
   }
 
@@ -103,14 +112,21 @@ export function MatchList({ initial }: { initial: MatchItem[] }) {
               </button>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => setConfirmingId(item.matchId)}
-              aria-label={`Retirer le match avec ${item.displayName ?? "cette personne"}`}
-              className="shrink-0 rounded-btn border border-ink/15 px-4 py-2 font-display text-legend font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
-            >
-              Retirer
-            </button>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setConfirmingId(item.matchId)}
+                aria-label={`Retirer le match avec ${item.displayName ?? "cette personne"}`}
+                className="rounded-btn border border-ink/15 px-4 py-2 font-display text-legend font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+              >
+                Retirer
+              </button>
+              <ModerationMenu
+                targetId={item.otherUserId}
+                targetName={item.displayName}
+                onBlocked={() => onBlocked(item)}
+              />
+            </div>
           )}
         </li>
       ))}

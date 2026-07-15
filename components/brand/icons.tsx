@@ -59,6 +59,22 @@ export function ChevronDownIcon({ className }: { className?: string }) {
   return <Icon path="m6 9 6 6 6-6" className={className} />;
 }
 
+export function EllipsisIcon({ className }: { className?: string }) {
+  return (
+    <Icon
+      path="M6 12h.01M12 12h.01M18 12h.01"
+      className={className}
+      label="Options"
+    />
+  );
+}
+
+export function FlagIcon({ className }: { className?: string }) {
+  return (
+    <Icon path="M5 21V4m0 0 7 2 7-2v10l-7 2-7-2" className={className} />
+  );
+}
+
 export function TrashIcon({ className }: { className?: string }) {
   return (
     <Icon

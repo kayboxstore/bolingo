@@ -7,6 +7,7 @@ import { HeartIcon } from "@/components/brand/logo";
 import { XIcon } from "@/components/brand/icons";
 import { ProfileCard } from "@/components/discover/profile-card";
 import { MatchModal } from "@/components/discover/match-modal";
+import { ModerationMenu } from "@/components/moderation/moderation-menu";
 
 const REFILL_THRESHOLD = 3;
 
@@ -48,6 +49,16 @@ export function DiscoverDeck({ initial }: { initial: DiscoveryBatch }) {
       const result = await submitVerdict(acted.userId, verdict);
       if (result.matched) setMatchedWith(acted.displayName);
       if (rest.length <= REFILL_THRESHOLD) void refill(rest);
+    });
+  }
+
+  // Retire la carte courante sans enregistrer de verdict (après un blocage :
+  // le profil est déjà masqué côté serveur par blocks_between).
+  function skipCurrent() {
+    setCards((prev) => {
+      const rest = prev.slice(1);
+      if (rest.length <= REFILL_THRESHOLD) void refill(rest);
+      return rest;
     });
   }
 
@@ -98,6 +109,13 @@ export function DiscoverDeck({ initial }: { initial: DiscoveryBatch }) {
       {matchModal}
       <ProfileCard
         card={current}
+        overlay={
+          <ModerationMenu
+            targetId={current.userId}
+            targetName={current.displayName}
+            onBlocked={skipCurrent}
+          />
+        }
         actions={
           <>
             <button

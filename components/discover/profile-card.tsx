@@ -10,9 +10,11 @@ import { MapPinIcon } from "@/components/brand/icons";
 export function ProfileCard({
   card,
   actions,
+  overlay,
 }: {
   card: DiscoveryCard;
   actions?: React.ReactNode;
+  overlay?: React.ReactNode;
 }) {
   const where =
     card.distanceKm !== null
@@ -24,7 +26,12 @@ export function ProfileCard({
         : null;
 
   return (
-    <article className="flex w-full flex-col overflow-hidden rounded-card border border-ink/10 bg-white shadow-sm">
+    <article className="relative flex w-full flex-col overflow-hidden rounded-card border border-ink/10 bg-white shadow-sm">
+      {overlay && (
+        <div className="absolute right-2 top-2 z-10 rounded-full bg-white/85 backdrop-blur">
+          {overlay}
+        </div>
+      )}
       {card.photoUrl ? (
         <img
           src={card.photoUrl}
