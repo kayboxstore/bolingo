@@ -357,3 +357,10 @@ begin
     alter publication supabase_realtime add table public.messages;
   end if;
 end $$;
+
+-- Fonctions trigger : jamais appelables par l'API (moindre privilège,
+-- cohérent avec 0004). Postgres refuse déjà l'appel direct d'une fonction
+-- `returns trigger`, mais on retire le grant par convention. (re-audit ⚠️)
+revoke execute on function public.messages_normalize() from public, anon, authenticated;
+revoke execute on function public.messages_rate_limit() from public, anon, authenticated;
+revoke execute on function public.messages_soft_delete_guard() from public, anon, authenticated;
