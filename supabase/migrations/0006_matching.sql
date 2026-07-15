@@ -32,7 +32,14 @@ begin
   -- commit du premier, puis son SELECT (nouveau snapshot en READ COMMITTED)
   -- voit le like réciproque. Sans ce verrou : match perdu en cas de
   -- simultanéité stricte. Le verrou est libéré au commit/rollback.
-  perform pg_advisory_xact_lock(hashtextextended(a::text || '|' || b::text, 0));
+  -- Forme à deux arguments : classId dédié (évite toute collision sémantique
+  -- avec d'autres usages de pg_advisory_lock ailleurs dans l'app).
+  -- INVARIANT : un seul like par transaction (les inserts PostgREST sont en
+  -- autocommit) — sinon plusieurs verrous de paire pourraient inter-bloquer.
+  perform pg_advisory_xact_lock(
+    hashtext('motema.match_pair'),
+    hashtext(a::text || '|' || b::text)
+  );
 
   if exists (
     select 1 from public.likes l
@@ -55,6 +62,28 @@ $$;
 alter table public.matches
   add column if not exists user_a_seen_at timestamptz,
   add column if not exists user_b_seen_at timestamptz;
+
+-- Read-receipt : les deux `seen_at` ne doivent pas fuiter l'état « vu » de
+-- l'autre participant via un SELECT direct. L'app ne lit `is_new` qu'à travers
+-- list_matches (DEFINER) ; on retire donc ces colonnes de la surface client.
+revoke select on table public.matches from authenticated;
+revoke select on table public.matches from anon;
+grant select (id, user_a, user_b, status, created_at, updated_at)
+  on table public.matches to authenticated;
+
+-- --------------------------------------------- unreciprocated-like secrecy 🔴
+-- La policy likes_select de 0001 laissait le LIKÉ lister ses prétendants
+-- (bras « auth.uid() = likee_id and type in (like,superlike) ») : lecture
+-- directe /rest/v1/likes?likee_id=eq.moi → violation de l'invariant « un like
+-- non réciproque n'est jamais observable avant match ». Aucun code applicatif
+-- n'en dépend (réciprocité détectée dans le trigger DEFINER). On ne garde que
+-- le bras sortant : chacun ne voit QUE ses propres likes émis.
+drop policy if exists likes_select on public.likes;
+create policy likes_select on public.likes
+  for select using ((select auth.uid()) = liker_id);
+
+-- Index désormais mort (servait le « qui m'a liké ») — retiré.
+drop index if exists public.likes_incoming_idx;
 
 -- --------------------------------------------------- unmatch column hardening
 -- La RLS (matches_update_participant, 0001) limite la transition à

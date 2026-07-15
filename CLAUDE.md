@@ -65,6 +65,11 @@ supabase/
   the only sanctioned case of a non-accent heart color. Pass = ghost circle, charcoal X.
 - Focus rings on non-field controls: `ring-brand` full-strength + `ring-offset-2` (`ring-brand/25` alone
   fails WCAG 1.4.11; it is only acceptable on fields that also switch their border to brand).
+- **Destructive button**: `bg-error text-white` + `hover:bg-error-hover` (never opacity — the charte darkens
+  on hover). Reserved for irreversible confirmations (e.g. unmatch "Confirmer").
+- Copy: no anglicisms — the unmatch action reads **"Retirer"** (aria-label spells out the target), not "Unmatch".
+- Modals use the native `<dialog>` + `showModal()` (free focus trap, Escape, backdrop inertia) — never a
+  hand-rolled `role="dialog"` overlay (no trap = WCAG 2.4.3 failure).
 
 ## Data model (see migration for the source of truth)
 
@@ -77,6 +82,11 @@ Key rules baked into the DB:
 - Mutual `like`/`superlike` auto-creates a match (idempotent, race-safe via `ON CONFLICT`).
 - Account deletion is **soft** (`status='deleted'` + PII scrub); reports about a user survive their deletion.
 - `likes` RLS never leaks `pass` rows; a reported user can never read reports about them.
+- **Unreciprocated-like secrecy**: `likes_select` exposes only your own *outgoing* likes (0006 dropped the
+  incoming arm). "Who liked me" must never be observable before a match — reciprocity lives in the
+  `SECURITY DEFINER` auto-match trigger, and matches are the only sanctioned reveal boundary.
+- `matches.user_a_seen_at`/`user_b_seen_at` are column-revoked from clients (read-receipt leak); `is_new`
+  is served only through the `list_matches` RPC.
 
 ## Règle de sécurité — Base de données de production
 

@@ -2,23 +2,31 @@
 
 /* eslint-disable @next/next/no-img-element -- URLs signées éphémères, hors next/image */
 
-import { useState, useTransition } from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import { unmatch } from "@/lib/matches/actions";
 import type { MatchItem } from "@/lib/matches/queries";
 
 /**
- * Liste des matches. L'unmatch demande une confirmation en deux temps,
- * puis retire la carte de façon optimiste (l'action est idempotente).
+ * Liste des matches. L'unmatch demande une confirmation en deux temps, puis
+ * retire la carte de façon optimiste ; useOptimistic resynchronise sur la
+ * prop serveur (revalidatePath) — un échec réintègre donc la carte.
  */
 export function MatchList({ initial }: { initial: MatchItem[] }) {
-  const [items, setItems] = useState(initial);
+  // Base sur la prop serveur : après revalidatePath, une prop sans le match
+  // remplace l'overlay optimiste ; un échec la laisse intacte → la carte
+  // réapparaît (rollback gratuit).
+  const [items, removeOptimistic] = useOptimistic(
+    initial,
+    (current: MatchItem[], removedId: string) =>
+      current.filter((m) => m.matchId !== removedId),
+  );
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   function onUnmatch(item: MatchItem) {
-    setItems((prev) => prev.filter((m) => m.matchId !== item.matchId));
     setConfirmingId(null);
     startTransition(async () => {
+      removeOptimistic(item.matchId);
       const formData = new FormData();
       formData.set("matchId", item.matchId);
       await unmatch(formData);
@@ -54,22 +62,26 @@ export function MatchList({ initial }: { initial: MatchItem[] }) {
             </div>
           )}
           <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <p className="truncate font-display text-body font-semibold text-ink">
-              {item.profileAvailable
-                ? item.displayName
-                : "Profil indisponible"}
+            <p className="flex items-center gap-2">
+              <span className="truncate font-display text-body font-semibold text-ink">
+                {item.profileAvailable ? item.displayName : "Profil indisponible"}
+              </span>
               {item.isNew && (
-                <span className="ml-2 rounded-btn bg-brand px-2 py-1 text-legend text-brand-fg">
+                <span className="shrink-0 rounded-btn bg-brand px-2 py-1 text-legend text-brand-fg">
                   Nouveau
                 </span>
               )}
             </p>
             <p className="text-legend text-ink/70">
               Match du{" "}
-              {new Date(item.matchedAt).toLocaleDateString("fr-FR", {
-                day: "numeric",
-                month: "long",
-              })}
+              <time dateTime={item.matchedAt}>
+                {new Date(item.matchedAt).toLocaleDateString("fr-FR", {
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                  timeZone: "UTC",
+                })}
+              </time>
             </p>
           </div>
           {confirmingId === item.matchId ? (
@@ -77,14 +89,15 @@ export function MatchList({ initial }: { initial: MatchItem[] }) {
               <button
                 type="button"
                 onClick={() => onUnmatch(item)}
-                className="rounded-btn bg-error px-4 py-2 text-legend font-semibold text-white transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+                className="rounded-btn bg-error px-4 py-2 font-display text-legend font-semibold text-white transition hover:bg-error-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
               >
                 Confirmer
               </button>
               <button
                 type="button"
+                autoFocus
                 onClick={() => setConfirmingId(null)}
-                className="rounded-btn border border-ink/15 px-4 py-2 text-legend text-ink transition hover:border-ink/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+                className="rounded-btn border border-ink/15 px-4 py-2 font-display text-legend font-semibold text-ink transition hover:border-ink/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
               >
                 Annuler
               </button>
@@ -93,9 +106,10 @@ export function MatchList({ initial }: { initial: MatchItem[] }) {
             <button
               type="button"
               onClick={() => setConfirmingId(item.matchId)}
-              className="shrink-0 rounded-btn border border-ink/15 px-4 py-2 text-legend text-ink/70 transition hover:border-ink/40 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+              aria-label={`Retirer le match avec ${item.displayName ?? "cette personne"}`}
+              className="shrink-0 rounded-btn border border-ink/15 px-4 py-2 font-display text-legend font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
             >
-              Unmatch
+              Retirer
             </button>
           )}
         </li>

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { requireActiveMember } from "@/lib/auth/guards";
 import { loadDiscoveryBatch } from "@/lib/discover/queries";
 import { countUnseenMatches } from "@/lib/matches/queries";
 import { AppHeader } from "@/components/app-header";
@@ -10,28 +10,15 @@ import { DiscoveryFilters } from "@/components/discover/filters";
 export const metadata: Metadata = { title: "Découvrir" };
 
 export default async function DiscoverPage() {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  // Garde partagé : auth + vérifié + actif + non-flagué + profil complet.
+  const { supabase, user } = await requireActiveMember();
 
-  const [{ data: account }, { data: profile }] = await Promise.all([
-    supabase
-      .from("users")
-      .select("underage_attempted_at, status")
-      .eq("id", user.id)
-      .single(),
-    supabase
-      .from("profiles")
-      .select("onboarding_completed_at, max_distance_km, age_min, age_max")
-      .eq("user_id", user.id)
-      .maybeSingle(),
-  ]);
-
-  if (account?.underage_attempted_at) redirect("/onboarding/blocked");
-  // Prérequis produit : profil complet avant la découverte.
-  if (!profile?.onboarding_completed_at) redirect("/onboarding");
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("max_distance_km, age_min, age_max")
+    .eq("user_id", user.id)
+    .single();
+  if (!profile) redirect("/onboarding");
 
   const [batch, unseenMatches] = await Promise.all([
     loadDiscoveryBatch(),

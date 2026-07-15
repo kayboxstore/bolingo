@@ -1,46 +1,24 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { requireActiveMember } from "@/lib/auth/guards";
 import { loadMatches } from "@/lib/matches/queries";
 import { AppHeader } from "@/components/app-header";
 import { MatchList } from "@/components/matches/match-list";
+import { MarkSeen } from "@/components/matches/mark-seen";
 import { HeartIcon } from "@/components/brand/logo";
 
 export const metadata: Metadata = { title: "Mes matches" };
 
 export default async function MatchesPage() {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const [{ data: account }, { data: profile }] = await Promise.all([
-    supabase
-      .from("users")
-      .select("underage_attempted_at, status")
-      .eq("id", user.id)
-      .single(),
-    supabase
-      .from("profiles")
-      .select("onboarding_completed_at")
-      .eq("user_id", user.id)
-      .maybeSingle(),
-  ]);
-  if (account?.underage_attempted_at) redirect("/onboarding/blocked");
-  if (!profile?.onboarding_completed_at) redirect("/onboarding");
+  await requireActiveMember();
 
   const matches = await loadMatches();
-
-  // Les badges « Nouveau » de CE rendu restent affichés ; le compteur du
-  // header est remis à zéro pour les visites suivantes.
-  if (matches.some((m) => m.isNew)) {
-    await supabase.rpc("mark_matches_seen");
-  }
+  const hasUnseen = matches.some((m) => m.isNew);
 
   return (
     <div className="flex min-h-screen flex-col bg-white">
+      {/* Effet client : ne mute jamais pendant le rendu du Server Component. */}
+      <MarkSeen hasUnseen={hasUnseen} />
       <AppHeader nav unseenMatches={0} />
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-6 px-6 py-8">
         <h1 className="font-display text-h2 text-ink">Mes matches</h1>
@@ -59,7 +37,7 @@ export default async function MatchesPage() {
             </div>
             <Link
               href="/discover"
-              className="w-full rounded-btn bg-brand px-4 py-4 text-center font-display text-body font-semibold text-brand-fg transition hover:bg-brand-hover"
+              className="w-full rounded-btn bg-brand px-4 py-4 text-center font-display text-body font-semibold text-brand-fg transition hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
             >
               Continuer à explorer
             </Link>

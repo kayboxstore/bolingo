@@ -1,12 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useState, useTransition } from "react";
 import { fetchMoreProfiles, submitVerdict } from "@/lib/discover/actions";
 import type { DiscoveryBatch, DiscoveryCard } from "@/lib/discover/queries";
 import { HeartIcon } from "@/components/brand/logo";
 import { XIcon } from "@/components/brand/icons";
 import { ProfileCard } from "@/components/discover/profile-card";
+import { MatchModal } from "@/components/discover/match-modal";
 
 const REFILL_THRESHOLD = 3;
 
@@ -64,40 +64,7 @@ export function DiscoverDeck({ initial }: { initial: DiscoveryBatch }) {
   }
 
   const matchModal = matchedWith && (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="match-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 p-6"
-    >
-      <div className="flex w-full max-w-sm flex-col items-center gap-6 rounded-card bg-white p-6 text-center shadow-sm">
-        <HeartIcon className="h-12 w-12 text-accent" />
-        <div className="flex flex-col gap-2">
-          <h2 id="match-title" className="font-display text-h3 text-ink">
-            C&apos;est un match !
-          </h2>
-          <p className="text-body text-ink/70">
-            {matchedWith} et toi vous êtes aimés mutuellement.
-          </p>
-        </div>
-        <div className="flex w-full flex-col gap-2">
-          <Link
-            href="/matches"
-            className="w-full rounded-btn bg-brand px-4 py-4 text-center font-display text-body font-semibold text-brand-fg transition hover:bg-brand-hover"
-          >
-            Voir mes matches
-          </Link>
-          <button
-            type="button"
-            autoFocus
-            onClick={() => setMatchedWith(null)}
-            className="w-full rounded-btn border border-ink/15 px-4 py-4 font-display text-body font-semibold text-ink transition hover:border-ink/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
-          >
-            Continuer à explorer
-          </button>
-        </div>
-      </div>
-    </div>
+    <MatchModal name={matchedWith} onClose={() => setMatchedWith(null)} />
   );
 
   if (!current) {

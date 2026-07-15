@@ -2,43 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { requireActiveMember } from "@/lib/auth/guards";
 import { loadDiscoveryBatch, type DiscoveryBatch } from "@/lib/discover/queries";
-
-/**
- * Garde des actions de découverte : authentifié, vérifié, compte actif,
- * profil COMPLET (prérequis produit), pas de blocage mineur.
- */
-async function requireDiscoveryUser() {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-  if (!user.email_confirmed_at) redirect("/verify-email");
-
-  const [{ data: account }, { data: profile }] = await Promise.all([
-    supabase
-      .from("users")
-      .select("underage_attempted_at, status")
-      .eq("id", user.id)
-      .single(),
-    supabase
-      .from("profiles")
-      .select("onboarding_completed_at")
-      .eq("user_id", user.id)
-      .maybeSingle(),
-  ]);
-
-  if (account?.underage_attempted_at) redirect("/onboarding/blocked");
-  if (account && account.status !== "active") {
-    await supabase.auth.signOut();
-    redirect("/login");
-  }
-  if (!profile?.onboarding_completed_at) redirect("/onboarding");
-
-  return { supabase, user };
-}
 
 const verdictSchema = z.object({
   likeeId: z.uuid(),
@@ -59,7 +24,7 @@ export async function submitVerdict(
   likeeId: string,
   verdict: "like" | "pass",
 ): Promise<{ ok: boolean; matched: boolean }> {
-  const { supabase, user } = await requireDiscoveryUser();
+  const { supabase, user } = await requireActiveMember();
 
   const parsed = verdictSchema.safeParse({ likeeId, verdict });
   if (!parsed.success) return { ok: false, matched: false };
@@ -77,8 +42,10 @@ export async function submitVerdict(
 
   let matched = false;
   if (parsed.data.verdict === "like" && !error) {
-    // Paire canonique (uuid : l'ordre texte hexadécimal = l'ordre binaire PG).
-    const [a, b] = [user.id, parsed.data.likeeId].sort();
+    // Paire canonique. UUID en minuscules AVANT le tri : zod accepte l'hexa
+    // majuscule, or 'F' < 'a' en ASCII inverserait la paire (aucune fuite,
+    // juste un match manqué à l'affichage).
+    const [a, b] = [user.id, parsed.data.likeeId.toLowerCase()].sort();
     const { data: match } = await supabase
       .from("matches")
       .select("id")
@@ -97,7 +64,7 @@ export async function submitVerdict(
 export async function fetchMoreProfiles(
   excludeIds: string[],
 ): Promise<DiscoveryBatch> {
-  await requireDiscoveryUser();
+  await requireActiveMember();
   const exclude = z.array(z.uuid()).max(50).safeParse(excludeIds);
   return loadDiscoveryBatch(exclude.success ? exclude.data : []);
 }
@@ -120,7 +87,7 @@ export async function updateDiscoveryFilters(
   _prev: FiltersState,
   formData: FormData,
 ): Promise<FiltersState> {
-  const { supabase, user } = await requireDiscoveryUser();
+  const { supabase, user } = await requireActiveMember();
 
   const parsed = filtersSchema.safeParse({
     maxDistanceKm: formData.get("maxDistanceKm"),

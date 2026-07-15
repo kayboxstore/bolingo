@@ -22,13 +22,13 @@ export function AppHeader({
           <nav className="flex items-center gap-4" aria-label="Navigation principale">
             <Link
               href="/discover"
-              className="-m-2 p-2 text-legend text-ink/70 underline-offset-2 hover:underline"
+              className="-m-2 rounded-btn p-2 text-legend text-ink/70 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
             >
               Découvrir
             </Link>
             <Link
               href="/matches"
-              className="relative -m-2 p-2 text-legend text-ink/70 underline-offset-2 hover:underline"
+              className="relative -m-2 rounded-btn p-2 text-legend text-ink/70 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
             >
               Matches
               {unseenMatches > 0 && (
@@ -49,7 +49,7 @@ export function AppHeader({
         <form action={signOut}>
           <button
             type="submit"
-            className="-m-2 p-2 text-legend text-ink/70 underline-offset-2 hover:underline"
+            className="-m-2 rounded-btn p-2 text-legend text-ink/70 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
           >
             Se déconnecter
           </button>

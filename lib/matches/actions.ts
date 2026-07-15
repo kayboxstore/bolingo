@@ -1,41 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
-
-/** Garde commune : authentifié, vérifié, actif, profil complet, non flagué. */
-async function requireMatchUser() {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-  if (!user.email_confirmed_at) redirect("/verify-email");
-
-  const [{ data: account }, { data: profile }] = await Promise.all([
-    supabase
-      .from("users")
-      .select("underage_attempted_at, status")
-      .eq("id", user.id)
-      .single(),
-    supabase
-      .from("profiles")
-      .select("onboarding_completed_at")
-      .eq("user_id", user.id)
-      .maybeSingle(),
-  ]);
-
-  if (account?.underage_attempted_at) redirect("/onboarding/blocked");
-  if (account && account.status !== "active") {
-    await supabase.auth.signOut();
-    redirect("/login");
-  }
-  if (!profile?.onboarding_completed_at) redirect("/onboarding");
-
-  return { supabase, user };
-}
+import { requireActiveMember } from "@/lib/auth/guards";
 
 /**
  * Unmatch : transition status='unmatched'. La RLS (0001) garantit que seul
@@ -44,7 +11,7 @@ async function requireMatchUser() {
  * unmatché (course avec l'autre participant) est un no-op silencieux.
  */
 export async function unmatch(formData: FormData): Promise<void> {
-  const { supabase } = await requireMatchUser();
+  const { supabase } = await requireActiveMember();
 
   const parsed = z.uuid().safeParse(formData.get("matchId"));
   if (!parsed.success) return;
@@ -62,6 +29,6 @@ export async function unmatch(formData: FormData): Promise<void> {
 
 /** Marque tous mes matches comme vus (badge header remis à zéro). */
 export async function markMatchesSeen(): Promise<void> {
-  const { supabase } = await requireMatchUser();
+  const { supabase } = await requireActiveMember();
   await supabase.rpc("mark_matches_seen");
 }
