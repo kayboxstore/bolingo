@@ -12,7 +12,7 @@ export type GeocodeResult = {
 };
 
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
-const USER_AGENT = "Motema/0.1 (contact: kayboxstore@gmail.com)";
+const USER_AGENT = "Bolingo/0.1 (contact: kayboxstore@gmail.com)";
 
 type NominatimItem = {
   display_name?: string;

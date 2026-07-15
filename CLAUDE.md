@@ -1,8 +1,8 @@
-# Motema
+# Bolingo
 
 Dating app. Stack: **Next.js (App Router) · TypeScript · Tailwind CSS · Supabase (Postgres + Auth + Storage)**.
 
-> "Motema" = *heart* in Lingala. Brand assets live at the repo root (`motema-*.png`): logo, charte
+> "Bolingo" = *love* in Lingala. Brand assets live at the repo root (`motema-*.png`): logo, charte
 > (color/type system), header and profile-card references. Extract the palette from `motema-charte-*.png`
 > and replace the placeholder brand tokens in `tailwind.config.ts`.
 

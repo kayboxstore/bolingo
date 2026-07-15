@@ -1,4 +1,4 @@
-# Motema
+# Bolingo
 
 Dating app — **Next.js (App Router) · TypeScript · Tailwind CSS · Supabase**.
 

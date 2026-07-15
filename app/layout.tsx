@@ -17,8 +17,8 @@ const poppins = Poppins({
 
 export const metadata: Metadata = {
   title: {
-    default: "Motema",
-    template: "%s · Motema",
+    default: "Bolingo",
+    template: "%s · Bolingo",
   },
   description: "Là où les cœurs se rencontrent.",
 };
