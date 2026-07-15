@@ -59,6 +59,12 @@ supabase/
   "pressable" signal. **Text badges use CTA rose** (`bg-brand text-brand-fg`, AA 4.6:1) — rose vif fails AA
   as a text background. Non-interactive badges may use `py-1` (target-size rules don't apply).
 - Structural icons: shared 24px 2px-stroke set in `components/brand/icons.tsx` — never Unicode glyphs.
+- **Discovery card** (comps `motema-carte-profil-*`): photo `aspect-[4/5]` bord-à-bord, title "Prénom, Âge"
+  (Poppins, one unit), pin icon + place, actions inside the card footer under a `border-ink/10` rule.
+  **Like button = filled rose vif circle with a white heart** (per comp A; non-text contrast 3.2:1 passes) —
+  the only sanctioned case of a non-accent heart color. Pass = ghost circle, charcoal X.
+- Focus rings on non-field controls: `ring-brand` full-strength + `ring-offset-2` (`ring-brand/25` alone
+  fails WCAG 1.4.11; it is only acceptable on fields that also switch their border to brand).
 
 ## Data model (see migration for the source of truth)
 
@@ -71,6 +77,16 @@ Key rules baked into the DB:
 - Mutual `like`/`superlike` auto-creates a match (idempotent, race-safe via `ON CONFLICT`).
 - Account deletion is **soft** (`status='deleted'` + PII scrub); reports about a user survive their deletion.
 - `likes` RLS never leaks `pass` rows; a reported user can never read reports about them.
+
+## Règle de sécurité — Base de données de production
+
+Le MCP Supabase peut être disponible dans certaines sessions. Il est STRICTEMENT INTERDIT d'utiliser cet accès pour :
+- Appliquer une migration sur le projet Supabase réel
+- Exécuter du SQL en écriture (INSERT/UPDATE/DELETE/seed/purge) sur le projet réel
+- Modifier des permissions, policies, ou schémas sur le projet réel
+
+...sans confirmation EXPLICITE de l'utilisateur pour cette action précise, à chaque fois. Les migrations sont écrites en fichiers dans supabase/migrations/ et appliquées uniquement par l'utilisateur lui-même via `supabase db push`, sauf demande contraire explicite et ponctuelle de sa part.
+La lecture seule (advisors, list_migrations, inspection de schéma) reste autorisée sans confirmation.
 
 ## Security notes
 
@@ -90,8 +106,23 @@ Key rules baked into the DB:
 - **Profile photos are re-encoded server-side on upload** (`sharp`): EXIF/GPS stripped, dimensions capped,
   polyglot payloads neutralized. Never store a user-supplied image buffer verbatim.
 - **The underage block is enforced in RLS and Storage policies** (`is_underage_blocked()`), not only in
-  server actions — a flagged account cannot write profile data even via direct PostgREST/Storage calls.
-  The 18+ gate is layered: zod (plausibility window rejects typos before the irreversible flag) → DB CHECK →
-  completion trigger → permanent flag (column-revoked). Age remains self-declared (ID check = future brick).
+  server actions — a flagged account cannot write profile data even via direct PostgREST/Storage calls
+  (tables in 0002/0003; the storage *upload* policy in 0005). The 18+ gate is layered: zod (plausibility
+  window rejects typos before the irreversible flag) → DB CHECK → completion trigger → permanent flag
+  (column-revoked). Age remains self-declared (ID check = future brick).
+- **`record_underage_attempt()` is deliberately `/rpc`-exposed to `authenticated`** (audited): the wizard
+  calls it through PostgREST, so it cannot live in the private schema. It is safe by construction — no
+  parameters, every statement scoped to `auth.uid()`, flag is write-once (`coalesce` + column revoke), so
+  the worst a caller can do is flag *themselves* (same effect as declaring a minor birthdate). Known wart:
+  a direct call skips the server action's Storage cleanup, leaving the caller's photo *objects* orphaned in
+  the private bucket — add a periodic sweep job (rows are deleted; objects are unreachable via the app).
 - Geocoding goes through `/api/geocode` (authenticated, throttled per-user + global, cached) — Nominatim's
   1 req/s policy applies to the whole app. In-memory limiter: move to shared KV before scale.
+- **`profiles.location` is not client-readable** (column-level SELECT revoke): clients get only the
+  km-rounded `distance_km` from the `discover_profiles` RPC. The RPC is the sanctioned SECURITY DEFINER
+  exception (pinned `search_path = 'public','extensions'` — PostGIS schema varies by install method):
+  it inlines every visibility/block/likes predicate so the partial GiST index is provable and the hot
+  path avoids per-row helper calls. Never `select("*")` on `profiles` from app code.
+- Feed photos: the caller signs other users' photos thanks to the `photos_read_public_profiles` Storage
+  policy (approved photo + publicly visible profile + no mutual block). The feed re-checks per-photo
+  moderation via a lateral join — never trust the denormalized `primary_photo_path` for other users.

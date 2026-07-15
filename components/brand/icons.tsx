@@ -38,6 +38,23 @@ export function ArrowRightIcon({ className }: { className?: string }) {
   return <Icon path="M5 12h14m0 0-6-6m6 6-6 6" className={className} />;
 }
 
+export function XIcon({ className }: { className?: string }) {
+  return <Icon path="M6 6l12 12M18 6L6 18" className={className} />;
+}
+
+export function MapPinIcon({ className }: { className?: string }) {
+  return (
+    <Icon
+      path="M12 21s-7-5.1-7-11a7 7 0 0 1 14 0c0 5.9-7 11-7 11Zm0-8.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"
+      className={className}
+    />
+  );
+}
+
+export function ChevronDownIcon({ className }: { className?: string }) {
+  return <Icon path="m6 9 6 6 6-6" className={className} />;
+}
+
 export function TrashIcon({ className }: { className?: string }) {
   return (
     <Icon
