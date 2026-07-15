@@ -70,6 +70,9 @@ supabase/
 - Copy: no anglicisms — the unmatch action reads **"Retirer"** (aria-label spells out the target), not "Unmatch".
 - Modals use the native `<dialog>` + `showModal()` (free focus trap, Escape, backdrop inertia) — never a
   hand-rolled `role="dialog"` overlay (no trap = WCAG 2.4.3 failure).
+- **Chat own-message bubbles use `bg-brand text-brand-fg`** (AA 4.6:1) — same rationale as text badges: rose
+  vif (`accent`) fails AA under white text, so CTA rose is the only rose that works as a text background.
+  Received bubbles use `bg-disabled text-ink`.
 
 ## Data model (see migration for the source of truth)
 

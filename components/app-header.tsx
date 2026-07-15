@@ -44,6 +44,12 @@ export function AppHeader({
                 </>
               )}
             </Link>
+            <Link
+              href="/messages"
+              className="-m-2 rounded-btn p-2 text-legend text-ink/70 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+            >
+              Messages
+            </Link>
           </nav>
         )}
         <form action={signOut}>
