@@ -13,7 +13,8 @@ export function Composer({
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const trimmed = value.trim();
-  const overLimit = value.length > max;
+  // aligné sur le serveur qui valide content.trim() (pas la longueur brute)
+  const overLimit = trimmed.length > max;
   const canSend = trimmed.length > 0 && !overLimit;
 
   function submit() {

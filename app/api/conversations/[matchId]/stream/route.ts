@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { getActiveMemberOrNull } from "@/lib/auth/guards";
 import type { ChatMessage } from "@/lib/messages/types";
 
 // Abonnement Realtime long-vécu + poll → runtime Node, jamais mis en cache.
@@ -9,24 +9,36 @@ export const dynamic = "force-dynamic";
 const RECONCILE_MS = 4000;
 const HEARTBEAT_MS = 25000;
 
+type MessageRow = {
+  id: string;
+  sender_id: string;
+  content: string;
+  deleted_at: string | null;
+  created_at: string;
+};
+
+const ZERO_TS = new Date(0).toISOString();
+const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
+
 /**
  * Proxy SSE : le SERVEUR tient l'abonnement Supabase Realtime (authentifié par
  * la session httpOnly — le JWT ne quitte jamais le serveur) et relaie les
- * nouveaux messages au navigateur. Un poll keyset de réconciliation (4 s)
- * garantit la livraison même si le WebSocket Realtime n'est pas disponible
- * dans le runtime, et détecte l'unmatch/blocage pour couper la conversation.
+ * messages au navigateur. Un poll de réconciliation (4 s) garantit la
+ * livraison même si le WebSocket Realtime est indisponible, relaie aussi les
+ * soft-deletes (curseur dédié), et détecte l'unmatch/blocage pour couper la
+ * conversation. Réservé aux membres actifs (statut/onboarding vérifiés).
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: { matchId: string } },
 ) {
   const matchId = params.matchId;
-  const supabase = createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return new Response("unauthorized", { status: 401 });
+  // Même garantie que requireActiveMember (statut actif, non flagué, onboarding
+  // complet) — sinon un compte suspendu garderait l'accès au flux.
+  const member = await getActiveMemberOrNull();
+  if (!member) return new Response("forbidden", { status: 403 });
+  const { supabase } = member;
 
   // Participant d'un match actif ? La RLS matches filtre déjà (pas d'oracle).
   const { data: match } = await supabase
@@ -45,28 +57,32 @@ export async function GET(
 
   const encoder = new TextEncoder();
   const sentIds = new Set<string>();
-  let lastAt = new Date(0).toISOString();
-  let lastId = "00000000-0000-0000-0000-000000000000";
+  const deletedSent = new Set<string>();
+  // Amorçage optionnel du curseur depuis le dernier message connu du client
+  // (évite de re-tout-rejouer à chaque reconnexion EventSource). (audit ⚠️)
+  const sinceAt = request.nextUrl.searchParams.get("sinceAt");
+  const sinceId = request.nextUrl.searchParams.get("sinceId");
+  let lastAt = sinceAt ?? ZERO_TS;
+  let lastId = sinceId ?? ZERO_UUID;
+  let lastDeleteAt = ZERO_TS;
   let closed = false;
+  let cleanupFn: (() => void) | null = null;
 
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (event: unknown) => {
+      const enqueue = (chunk: string) => {
         if (closed) return;
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        try {
+          controller.enqueue(encoder.encode(chunk));
+        } catch {
+          cleanup(); // controller déjà fermé → on nettoie
+        }
       };
-      const comment = () => {
-        if (closed) return;
-        controller.enqueue(encoder.encode(`: ping\n\n`));
-      };
+      const send = (event: unknown) =>
+        enqueue(`data: ${JSON.stringify(event)}\n\n`);
+      const comment = () => enqueue(`: ping\n\n`);
 
-      const pushMessage = (m: {
-        id: string;
-        sender_id: string;
-        content: string;
-        deleted_at: string | null;
-        created_at: string;
-      }) => {
+      const pushMessage = (m: MessageRow) => {
         const message: ChatMessage = {
           id: m.id,
           senderId: m.sender_id,
@@ -75,16 +91,17 @@ export async function GET(
           createdAt: m.created_at,
         };
         if (m.deleted_at) {
-          // un soft-delete doit toujours passer, même déjà « vu »
+          // Un soft-delete doit toujours passer (même si l'id a déjà été
+          // envoyé comme message vivant), mais une seule fois.
+          if (deletedSent.has(m.id)) return;
+          deletedSent.add(m.id);
+          if (m.deleted_at > lastDeleteAt) lastDeleteAt = m.deleted_at;
           send({ type: "message", message });
           return;
         }
         if (sentIds.has(m.id)) return;
         sentIds.add(m.id);
-        if (
-          m.created_at > lastAt ||
-          (m.created_at === lastAt && m.id > lastId)
-        ) {
+        if (m.created_at > lastAt || (m.created_at === lastAt && m.id > lastId)) {
           lastAt = m.created_at;
           lastId = m.id;
         }
@@ -103,8 +120,8 @@ export async function GET(
             filter: `match_id=eq.${matchId}`,
           },
           (payload) => {
-            const row = (payload.new ?? {}) as Record<string, unknown>;
-            if (row.id) pushMessage(row as never);
+            const row = payload.new as Partial<MessageRow> | null;
+            if (row?.id) pushMessage(row as MessageRow);
           },
         );
       try {
@@ -116,8 +133,8 @@ export async function GET(
       // ---- Réconciliation + détection d'unmatch/blocage ---------------------
       const reconcile = async () => {
         if (closed) return;
-        // La conversation est-elle toujours accessible ? (RLS : renvoie 0
-        // ligne si unmatch/blocage → on coupe proprement des deux côtés.)
+        // Conversation toujours accessible ? (RLS matches : 0 ligne si
+        // unmatch/blocage/compte suspendu → on coupe des deux côtés.)
         const { data: still } = await supabase
           .from("matches")
           .select("id")
@@ -130,6 +147,7 @@ export async function GET(
           return;
         }
 
+        // (a) nouveaux messages (curseur d'insertion)
         const { data: rows } = await supabase
           .from("messages")
           .select("id, sender_id, content, deleted_at, created_at")
@@ -137,10 +155,24 @@ export async function GET(
           .or(
             `created_at.gt.${lastAt},and(created_at.eq.${lastAt},id.gt.${lastId})`,
           )
+          .is("deleted_at", null)
           .order("created_at", { ascending: true })
           .order("id", { ascending: true })
           .limit(100);
-        rows?.forEach((r) => pushMessage(r as never));
+        (rows as MessageRow[] | null)?.forEach(pushMessage);
+
+        // (b) suppressions (curseur de suppression dédié — sinon un soft-delete
+        // d'un message antérieur au curseur d'insertion n'est jamais relayé
+        // quand le WS Realtime est indisponible). (audit code 🔴)
+        const { data: deletes } = await supabase
+          .from("messages")
+          .select("id, sender_id, content, deleted_at, created_at")
+          .eq("match_id", matchId)
+          .not("deleted_at", "is", null)
+          .gt("deleted_at", lastDeleteAt)
+          .order("deleted_at", { ascending: true })
+          .limit(100);
+        (deletes as MessageRow[] | null)?.forEach(pushMessage);
 
         const { data: readAt } = await supabase.rpc("other_last_read", {
           p_match_id: matchId,
@@ -151,7 +183,7 @@ export async function GET(
       const reconcileTimer = setInterval(() => void reconcile(), RECONCILE_MS);
       const heartbeatTimer = setInterval(comment, HEARTBEAT_MS);
 
-      const cleanup = () => {
+      function cleanup() {
         if (closed) return;
         closed = true;
         clearInterval(reconcileTimer);
@@ -162,12 +194,15 @@ export async function GET(
         } catch {
           /* déjà fermé */
         }
-      };
-
+      }
+      cleanupFn = cleanup; // exposé au cancel() du stream
       request.signal.addEventListener("abort", cleanup);
 
       send({ type: "ready" });
       await reconcile(); // rattrapage initial immédiat
+    },
+    cancel() {
+      cleanupFn?.();
     },
   });
 

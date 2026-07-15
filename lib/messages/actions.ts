@@ -57,8 +57,10 @@ export async function sendMessage(
       if (existing) return { ok: true, message: toChat(existing) };
     }
     if (error.code === "P0001") return { ok: false, reason: "rate_limited" };
-    if (error.code === "42501") return { ok: false, reason: "unavailable" };
-    return { ok: false, reason: "error" };
+    // Tout autre échec (RLS 42501, FK 23503 sur match inexistant, etc.) est
+    // normalisé en "unavailable" : ne pas distinguer FK de RLS empêche de
+    // deviner l'existence d'un match d'autrui. (audit sécurité ⚠️)
+    return { ok: false, reason: "unavailable" };
   }
 
   revalidatePath("/messages");
@@ -76,14 +78,18 @@ export async function deleteMessage(
     .safeParse({ matchId, messageId });
   if (!parsed.success) return { ok: false };
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("messages")
     .update({ deleted_at: new Date().toISOString() })
     .eq("id", parsed.data.messageId)
+    .eq("match_id", parsed.data.matchId) // scope explicite
     .eq("sender_id", user.id) // ceinture ; la RLS l'impose déjà
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
 
-  return { ok: !error };
+  // 0 ligne (RLS, déjà supprimé, id inexistant) → échec, pas un faux succès.
+  return { ok: !error && Boolean(data) };
 }
 
 /** Marque la conversation comme lue jusqu'à maintenant (indicateur « vu »). */

@@ -25,7 +25,7 @@ export type ConversationHeader = {
   otherUserId: string;
   displayName: string | null;
   photoUrl: string | null;
-  active: boolean;
+  profileAvailable: boolean;
 };
 
 export type MessageCursor = { createdAt: string; id: string };

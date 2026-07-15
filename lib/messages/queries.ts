@@ -74,6 +74,9 @@ export async function loadConversationHeader(
 
   const otherUserId = match.user_a === user.id ? match.user_b : match.user_a;
 
+  // Même filtre de visibilité que list_conversations/discover : un profil
+  // masqué/supprimé/suspendu n'expose pas de données obsolètes (la RLS
+  // profiles_select le filtre déjà — ici on distingue le cas pour l'UI).
   const { data: profile } = await supabase
     .from("profiles")
     .select("display_name, primary_photo_path")
@@ -93,7 +96,7 @@ export async function loadConversationHeader(
     otherUserId,
     displayName: profile?.display_name ?? null,
     photoUrl,
-    active: true,
+    profileAvailable: Boolean(profile),
   };
 }
 

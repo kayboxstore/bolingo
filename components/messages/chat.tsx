@@ -40,10 +40,29 @@ export function Chat({
     initialOtherReadAt,
   );
   const [closed, setClosed] = useState(false);
+  const [banner, setBanner] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // curseur du message persisté le plus récent (amorce le poll SSE à la
+  // (re)connexion pour ne pas re-rejouer tout l'historique)
+  const cursorRef = useRef<{ at: string; id: string } | null>(
+    (() => {
+      const last = [...initialMessages].reverse().find((m) => m.id);
+      return last ? { at: last.createdAt, id: last.id } : null;
+    })(),
+  );
 
   const upsert = useCallback((incoming: ChatMessage) => {
+    // avance le curseur de reconnexion sur les messages vivants
+    if (
+      !incoming.deletedAt &&
+      (!cursorRef.current ||
+        incoming.createdAt > cursorRef.current.at ||
+        (incoming.createdAt === cursorRef.current.at &&
+          incoming.id > cursorRef.current.id))
+    ) {
+      cursorRef.current = { at: incoming.createdAt, id: incoming.id };
+    }
     setMessages((prev) => {
       const idx = prev.findIndex((m) => m.id === incoming.id);
       if (idx >= 0) {
@@ -64,30 +83,57 @@ export function Chat({
 
   // ---- flux temps réel -----------------------------------------------------
   useEffect(() => {
-    const es = new EventSource(`/api/conversations/${matchId}/stream`);
-    es.onmessage = (e) => {
-      const evt = JSON.parse(e.data) as
-        | { type: "ready" }
-        | { type: "message"; message: ChatMessage }
-        | { type: "read"; at: string | null }
-        | { type: "closed" };
-      if (evt.type === "message") upsert(evt.message);
-      else if (evt.type === "read") setOtherReadAt(evt.at);
-      else if (evt.type === "closed") {
-        setClosed(true);
-        es.close();
-      }
+    let stopped = false;
+    let es: EventSource | null = null;
+    let retry: ReturnType<typeof setTimeout>;
+
+    const connect = () => {
+      if (stopped) return;
+      const cursor = cursorRef.current;
+      const qs = cursor
+        ? `?sinceAt=${encodeURIComponent(cursor.at)}&sinceId=${cursor.id}`
+        : "";
+      es = new EventSource(`/api/conversations/${matchId}/stream${qs}`);
+      es.onmessage = (e) => {
+        const evt = JSON.parse(e.data) as
+          | { type: "ready" }
+          | { type: "message"; message: ChatMessage }
+          | { type: "read"; at: string | null }
+          | { type: "closed" };
+        if (evt.type === "message") upsert(evt.message);
+        else if (evt.type === "read") setOtherReadAt(evt.at);
+        else if (evt.type === "closed") {
+          setClosed(true);
+          stopped = true;
+          es?.close();
+        }
+      };
+      es.onerror = () => {
+        // Un EventSource ne se reconnecte PAS si la connexion initiale échoue
+        // (403/404/5xx) : on ferme et on retente manuellement (backoff fixe).
+        if (es?.readyState === EventSource.CLOSED && !stopped) {
+          es.close();
+          retry = setTimeout(connect, 3000);
+        }
+      };
     };
-    es.onerror = () => {
-      /* EventSource se reconnecte tout seul */
+    connect();
+
+    return () => {
+      stopped = true;
+      clearTimeout(retry);
+      es?.close();
     };
-    return () => es.close();
   }, [matchId, upsert]);
 
-  // ---- marque comme lu à l'ouverture et à chaque nouveau message reçu ------
+  // ---- marque comme lu (débounce ; à l'ouverture et sur message de l'autre) -
   useEffect(() => {
-    void markConversationRead(matchId);
-  }, [matchId, messages.length]);
+    const last = messages[messages.length - 1];
+    // ne rien faire si le dernier ajout est mon propre message / un envoi en cours
+    if (last && (last.senderId === me || last.status)) return;
+    const t = setTimeout(() => void markConversationRead(matchId), 500);
+    return () => clearTimeout(t);
+  }, [matchId, me, messages]);
 
   // ---- auto-scroll en bas sur nouveau message ------------------------------
   useEffect(() => {
@@ -100,19 +146,21 @@ export function Chat({
     const anchor = scrollRef.current;
     const prevHeight = anchor?.scrollHeight ?? 0;
     const oldest = messages.find((m) => !m.status); // 1er persisté
-    if (oldest) {
-      const older = await loadOlderMessages(matchId, {
-        createdAt: oldest.createdAt,
-        id: oldest.id,
-      });
-      setMessages((prev) => [...older.messages, ...prev]);
-      setHasMore(older.hasMore);
-      // conserve la position de lecture après préfixe
-      requestAnimationFrame(() => {
-        if (anchor) anchor.scrollTop = anchor.scrollHeight - prevHeight;
-      });
+    try {
+      if (oldest) {
+        const older = await loadOlderMessages(matchId, {
+          createdAt: oldest.createdAt,
+          id: oldest.id,
+        });
+        setMessages((prev) => [...older.messages, ...prev]);
+        setHasMore(older.hasMore);
+        requestAnimationFrame(() => {
+          if (anchor) anchor.scrollTop = anchor.scrollHeight - prevHeight;
+        });
+      }
+    } finally {
+      setLoadingMore(false); // jamais de spinner bloqué (échec transport inclus)
     }
-    setLoadingMore(false);
   }
 
   async function onSend(text: string) {
@@ -127,7 +175,22 @@ export function Chat({
     };
     setMessages((prev) => [...prev, optimistic]);
 
-    const res = await sendMessage(matchId, text, clientId);
+    const markFailed = () =>
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === clientId ? { ...m, status: "failed" as const } : m,
+        ),
+      );
+
+    let res: Awaited<ReturnType<typeof sendMessage>>;
+    try {
+      res = await sendMessage(matchId, text, clientId);
+    } catch {
+      // échec transport (offline/timeout) : bulle en « échec », pas figée
+      markFailed();
+      return;
+    }
+
     setMessages((prev) => {
       const next = prev.filter((m) => m.id !== clientId);
       if (res.ok) {
@@ -139,13 +202,22 @@ export function Chat({
         setClosed(true);
         return next;
       }
-      // échec récupérable : on garde la bulle en état « échec »
+      if (res.reason === "rate_limited") {
+        setBanner("Tu envoies trop vite. Patiente un instant.");
+        setTimeout(() => setBanner(null), 4000);
+      }
+      // rate_limited / error : bulle « échec » (récupérable par renvoi)
       return [...next, { ...optimistic, status: "failed" as const }];
     });
   }
 
   async function onDelete(id: string) {
-    const res = await deleteMessage(matchId, id);
+    let res: Awaited<ReturnType<typeof deleteMessage>>;
+    try {
+      res = await deleteMessage(matchId, id);
+    } catch {
+      res = { ok: false };
+    }
     if (res.ok) {
       setMessages((prev) =>
         prev.map((m) =>
@@ -154,6 +226,9 @@ export function Chat({
             : m,
         ),
       );
+    } else {
+      setBanner("La suppression a échoué. Réessaie.");
+      setTimeout(() => setBanner(null), 4000);
     }
   }
 
@@ -175,9 +250,19 @@ export function Chat({
           />
         )}
         <h1 className="truncate font-display text-body font-semibold text-ink">
-          {header.displayName ?? "Profil indisponible"}
+          {header.profileAvailable
+            ? (header.displayName ?? "Profil indisponible")
+            : "Profil indisponible"}
         </h1>
       </header>
+      {banner && (
+        <p
+          role="alert"
+          className="border-b border-error/25 bg-error/5 px-6 py-2 text-legend text-error"
+        >
+          {banner}
+        </p>
+      )}
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4">
         {hasMore && (

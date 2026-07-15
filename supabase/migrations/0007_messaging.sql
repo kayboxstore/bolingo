@@ -78,17 +78,31 @@ create trigger messages_rate_limit_before_insert
   before insert on public.messages
   for each row execute function public.messages_rate_limit();
 
+-- ------------------------------------------- garde « membre actif » appelant
+-- Un compte suspendu / flagué mineur garde un JWT valide : les server actions
+-- passent par requireActiveMember, mais un appel PostgREST/SSE direct
+-- contournait ce contrôle. On pousse la garantie en base. (audit sécurité 🔴)
+-- Vit dans le schéma `private` (non exposé par PostgREST, comme les helpers 0004).
+create or replace function private.caller_active()
+returns boolean language sql stable security definer set search_path = '' as $$
+  select private.user_is_active(auth.uid())
+     and not private.is_underage_blocked(auth.uid());
+$$;
+grant execute on function private.caller_active() to authenticated, anon;
+
 -- --------------------------------------------- blocage post-match → coupure
--- Un blocage mutuel rend la conversation inaccessible (au-delà de l'unmatch).
--- On recrée les policies 0001 en ajoutant la condition blocks_between.
+-- Lecture/écriture réservées aux 2 participants d'un match ACTIF, appelant
+-- actif, sans blocage mutuel. (blocks_between/user_is_active vivent dans
+-- `private` depuis 0004 — d'où la qualification private.*.)
 drop policy if exists messages_select on public.messages;
 create policy messages_select on public.messages
   for select using (
-    exists (
+    private.caller_active()
+    and exists (
       select 1 from public.matches m
       where m.id = match_id and m.status = 'active'
         and ((select auth.uid()) = m.user_a or (select auth.uid()) = m.user_b)
-        and not public.blocks_between(m.user_a, m.user_b)
+        and not private.blocks_between(m.user_a, m.user_b)
     )
   );
 
@@ -96,35 +110,68 @@ drop policy if exists messages_insert on public.messages;
 create policy messages_insert on public.messages
   for insert with check (
     (select auth.uid()) = sender_id
+    and private.caller_active()
     and exists (
       select 1 from public.matches m
       where m.id = match_id and m.status = 'active'
         and ((select auth.uid()) = m.user_a or (select auth.uid()) = m.user_b)
-        and not public.blocks_between(m.user_a, m.user_b)
+        and not private.blocks_between(m.user_a, m.user_b)
     )
   );
 
+-- Soft-delete borné au même invariant que le reste (match actif, non bloqué,
+-- appelant actif) — sinon un unmatch/blocage laisse encore muter. (audit ⚠️#4)
 drop policy if exists messages_update_own on public.messages;
 create policy messages_update_own on public.messages
-  for update using ((select auth.uid()) = sender_id)
+  for update using (
+    (select auth.uid()) = sender_id
+    and private.caller_active()
+    and exists (
+      select 1 from public.matches m
+      where m.id = match_id and m.status = 'active'
+        and not private.blocks_between(m.user_a, m.user_b)
+    )
+  )
   with check ((select auth.uid()) = sender_id);
 
--- Soft-delete définitif : interdit le « un-delete » (deleted_at non-null → null)
--- même via un appel PostgREST direct de l'auteur. (audit database-architect ⚠️)
-create or replace function public.messages_no_undelete()
+-- Le CHECK char_length between 1 and 2000 (0001) interdit content='' : on le
+-- remplace par un plafond seul (le min-1 reste garanti par messages_normalize
+-- à l'INSERT), afin de pouvoir SCRUBER le contenu au soft-delete.
+do $$
+declare c text;
+begin
+  select conname into c from pg_constraint
+   where conrelid = 'public.messages'::regclass and contype = 'c'
+     and pg_get_constraintdef(oid) ilike '%char_length%content%';
+  if c is not null then
+    execute format('alter table public.messages drop constraint %I', c);
+  end if;
+end $$;
+alter table public.messages
+  drop constraint if exists messages_content_max,
+  add constraint messages_content_max check (char_length(content) <= 2000);
+
+-- Soft-delete : (a) interdit le « un-delete », (b) SCRUBE réellement le contenu
+-- en base — la suppression doit être effective, pas seulement masquée à
+-- l'affichage (numéro de tel, adresse envoyés par erreur). (audit sécurité 🔴#2)
+create or replace function public.messages_soft_delete_guard()
 returns trigger language plpgsql set search_path = '' as $$
 begin
   if old.deleted_at is not null and new.deleted_at is null then
     raise exception 'cannot restore a deleted message'
       using errcode = 'check_violation';
   end if;
+  if new.deleted_at is not null and old.deleted_at is null then
+    new.content := '';
+  end if;
   return new;
 end;
 $$;
 drop trigger if exists messages_no_undelete_before_update on public.messages;
-create trigger messages_no_undelete_before_update
+drop trigger if exists messages_soft_delete_before_update on public.messages;
+create trigger messages_soft_delete_before_update
   before update on public.messages
-  for each row execute function public.messages_no_undelete();
+  for each row execute function public.messages_soft_delete_guard();
 
 -- --------------------------------------------------------- other_last_read()
 -- « Vu » : le dernier last_read_at de l'AUTRE participant. match_reads_own
@@ -141,7 +188,9 @@ language sql stable security definer set search_path = '' as $$
    and mr.user_id = case when m.user_a = auth.uid() then m.user_b else m.user_a end
   where m.id = p_match_id
     and m.status = 'active'
-    and (m.user_a = auth.uid() or m.user_b = auth.uid());
+    and (m.user_a = auth.uid() or m.user_b = auth.uid())
+    and private.caller_active()
+    and not private.blocks_between(m.user_a, m.user_b);
 $$;
 revoke all on function public.other_last_read(uuid) from public;
 revoke execute on function public.other_last_read(uuid) from anon;
@@ -204,6 +253,7 @@ language sql stable security definer set search_path = '' as $$
   ) last_msg on true
   where (m.user_a = auth.uid() or m.user_b = auth.uid())
     and m.status = 'active'
+    and private.caller_active()
     and not exists (
       select 1 from public.blocks b
       where (b.blocker_id = m.user_a and b.blocked_id = m.user_b)
@@ -214,6 +264,52 @@ $$;
 revoke all on function public.list_conversations() from public;
 revoke execute on function public.list_conversations() from anon;
 grant execute on function public.list_conversations() to authenticated;
+
+-- ------------------------ durcissement transverse matches (audit sécurité 🔴#1/#3)
+-- Un compte suspendu/flagué gardait l'accès en LECTURE aux matches — et donc,
+-- via la route SSE qui lit `matches`, au flux de messages. On aligne
+-- matches_select ET list_matches sur caller_active + blocage mutuel.
+drop policy if exists matches_select on public.matches;
+create policy matches_select on public.matches
+  for select using (
+    ((select auth.uid()) = user_a or (select auth.uid()) = user_b)
+    and private.caller_active()
+    and not private.blocks_between(user_a, user_b)
+  );
+
+create or replace function public.list_matches()
+returns table (
+  match_id uuid, other_user_id uuid, display_name text, photo_path text,
+  matched_at timestamptz, is_new boolean, profile_available boolean
+)
+language sql stable security definer set search_path = '' as $$
+  select
+    m.id,
+    case when m.user_a = auth.uid() then m.user_b else m.user_a end,
+    p.display_name,
+    photo.storage_path,
+    m.created_at,
+    (case when m.user_a = auth.uid() then m.user_a_seen_at else m.user_b_seen_at end) is null,
+    (p.user_id is not null)
+  from public.matches m
+  left join public.profiles p
+    on p.user_id = case when m.user_a = auth.uid() then m.user_b else m.user_a end
+   and p.is_visible and p.deleted_at is null
+   and exists (select 1 from public.users u where u.id = p.user_id and u.status = 'active')
+  left join lateral (
+    select pp.storage_path from public.profile_photos pp
+    where pp.user_id = p.user_id and pp.moderation_status = 'approved'
+    order by pp.position limit 1
+  ) photo on true
+  where (m.user_a = auth.uid() or m.user_b = auth.uid())
+    and m.status = 'active'
+    and private.caller_active()
+    and not private.blocks_between(m.user_a, m.user_b)
+  order by m.created_at desc;
+$$;
+revoke all on function public.list_matches() from public;
+revoke execute on function public.list_matches() from anon;
+grant execute on function public.list_matches() to authenticated;
 
 -- --------------------------------------------------------------- messages_page
 -- Pagination keyset par COMPARAISON DE TUPLE (created_at, id) < curseur, seek
