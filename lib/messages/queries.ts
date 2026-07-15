@@ -102,32 +102,33 @@ export async function loadConversationHeader(
  * curseur pour charger vers le haut. La RLS messages garantit l'accès
  * (match actif + participant + pas de blocage).
  */
+type MessageRow = {
+  id: string;
+  sender_id: string;
+  content: string;
+  deleted_at: string | null;
+  created_at: string;
+};
+
 export async function loadMessages(
   matchId: string,
   before?: MessageCursor,
 ): Promise<{ messages: ChatMessage[]; hasMore: boolean }> {
   const supabase = createClient();
 
-  let query = supabase
-    .from("messages")
-    .select("id, sender_id, content, deleted_at, created_at")
-    .eq("match_id", matchId)
-    .order("created_at", { ascending: false })
-    .order("id", { ascending: false })
-    .limit(PAGE_SIZE + 1);
-
-  if (before) {
-    query = query.or(
-      `created_at.lt.${before.createdAt},and(created_at.eq.${before.createdAt},id.lt.${before.id})`,
-    );
-  }
-
-  const { data, error } = await query;
+  // RPC à comparaison de tuple (seek direct dans messages_keyset_idx).
+  const { data, error } = await supabase.rpc("messages_page", {
+    p_match_id: matchId,
+    p_before_created_at: before?.createdAt ?? null,
+    p_before_id: before?.id ?? null,
+    p_limit: PAGE_SIZE + 1,
+  });
   if (error || !data) return { messages: [], hasMore: false };
 
-  const hasMore = data.length > PAGE_SIZE;
-  const rows = hasMore ? data.slice(0, PAGE_SIZE) : data;
-  const messages: ChatMessage[] = rows
+  const rows = data as MessageRow[];
+  const hasMore = rows.length > PAGE_SIZE;
+  const page = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
+  const messages: ChatMessage[] = page
     .map((m) => ({
       id: m.id,
       senderId: m.sender_id,
@@ -135,7 +136,7 @@ export async function loadMessages(
       deletedAt: m.deleted_at,
       createdAt: m.created_at,
     }))
-    .reverse();
+    .reverse(); // desc → asc (ordre d'affichage)
 
   return { messages, hasMore };
 }

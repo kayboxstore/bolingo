@@ -19,7 +19,8 @@ export type SendResult =
 
 /**
  * Envoie un message. IDEMPOTENT via client_id (unique partiel sender_id,
- * client_id) : un renvoi après timeout réseau retombe sur la ligne existante.
+ * client_id) : un renvoi après timeout réseau déclenche une 23505, qu'on
+ * rattrape en relisant la ligne déjà insérée (pas de clause ON CONFLICT).
  * La RLS messages_insert impose match actif + participant + pas de blocage —
  * un envoi vers un match unmatché/bloqué entre-temps échoue proprement.
  */

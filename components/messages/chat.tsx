@@ -12,6 +12,7 @@ import {
 } from "@/lib/messages/actions";
 import { MESSAGE_MAX } from "@/lib/messages/constants";
 import type { ChatMessage, ConversationHeader } from "@/lib/messages/types";
+import { ArrowLeftIcon } from "@/components/brand/icons";
 import { Composer } from "@/components/messages/composer";
 
 type Pending = ChatMessage & { status?: "sending" | "failed" };
@@ -161,10 +162,10 @@ export function Chat({
       <header className="flex items-center gap-4 border-b border-ink/10 px-6 py-4">
         <Link
           href="/messages"
-          className="-m-2 rounded-btn p-2 text-legend text-ink/70 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+          className="-m-2 rounded-btn p-2 text-ink/70 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
           aria-label="Retour aux conversations"
         >
-          ←
+          <ArrowLeftIcon className="h-6 w-6" />
         </Link>
         {header.photoUrl && (
           <img
@@ -217,7 +218,9 @@ export function Chat({
                   {deleted ? "Message supprimé" : m.content}
                 </div>
                 <div className="mt-2 flex items-center gap-2 text-legend text-ink/60">
-                  <time dateTime={m.createdAt}>
+                  {/* heure locale du client : suppressHydrationWarning évite
+                      un mismatch SSR (fuseau serveur) → hydratation (client) */}
+                  <time dateTime={m.createdAt} suppressHydrationWarning>
                     {new Date(m.createdAt).toLocaleTimeString("fr-FR", {
                       hour: "2-digit",
                       minute: "2-digit",
