@@ -1,5 +1,5 @@
 -- ============================================================================
--- Motema — initial schema
+-- Bolingo — initial schema
 -- Implements the database-architect audit (blockers + important findings):
 --   * PostGIS geography + GiST for distance matching
 --   * race-safe, idempotent auto-match trigger (SECURITY DEFINER, pinned path)

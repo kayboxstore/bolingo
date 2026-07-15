@@ -1,5 +1,5 @@
 -- ============================================================================
--- Motema — matching (like mutuel → match)
+-- Bolingo — matching (like mutuel → match)
 --
 -- ⚠️ FICHIER UNIQUEMENT : à appliquer par l'utilisateur via `supabase db push`
 -- (règle CLAUDE.md — aucune écriture sur le projet réel sans confirmation).
@@ -37,7 +37,7 @@ begin
   -- INVARIANT : un seul like par transaction (les inserts PostgREST sont en
   -- autocommit) — sinon plusieurs verrous de paire pourraient inter-bloquer.
   perform pg_advisory_xact_lock(
-    hashtext('motema.match_pair'),
+    hashtext('bolingo.match_pair'),
     hashtext(a::text || '|' || b::text)
   );
 

@@ -1,7 +1,7 @@
 import type { Config } from "tailwindcss";
 
 /**
- * Motema design tokens — source of truth: motema-charte-a/b.png (v1.0 · 2026).
+ * Bolingo design tokens — source of truth: motema-charte-a/b.png (v1.0 · 2026).
  * Règle 60/30/10 : blanc (fonds) / charbon (texte) / rose (accents).
  * Grille 8 px : retraits 24, groupes 16, éléments 8.
  */

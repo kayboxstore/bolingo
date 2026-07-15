@@ -1,5 +1,5 @@
 -- ============================================================================
--- Motema — function exposure hardening (issu des advisors Supabase, live)
+-- Bolingo — function exposure hardening (issu des advisors Supabase, live)
 --
 -- Les privilèges PAR DÉFAUT de Supabase accordent EXECUTE à anon/authenticated
 -- sur toute nouvelle fonction : nos helpers SECURITY DEFINER étaient donc

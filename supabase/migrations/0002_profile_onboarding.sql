@@ -1,5 +1,5 @@
 -- ============================================================================
--- Motema — profile onboarding
+-- Bolingo — profile onboarding
 --   * photo moderation: publish immediately, `flagged` for manual review
 --   * wizard progress (onboarding_step) for resume
 --   * legal age gate: permanent underage flag, unclearable by the user
