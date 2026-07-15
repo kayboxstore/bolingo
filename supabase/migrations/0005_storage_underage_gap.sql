@@ -1,5 +1,5 @@
 -- ============================================================================
--- Motema — close the storage-upload underage gap
+-- Bolingo — close the storage-upload underage gap
 --
 -- Trouvé lors de la revue ciblée de record_underage_attempt() : le blocage
 -- mineur avait été ajouté (0002) aux policies des TABLES profiles /

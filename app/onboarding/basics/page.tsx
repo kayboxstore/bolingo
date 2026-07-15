@@ -12,7 +12,7 @@ export default async function BasicsPage() {
     <WizardShell
       step={1}
       title="Fais les présentations"
-      subtitle="Motema est réservé aux personnes majeures (18 ans révolus)."
+      subtitle="Bolingo est réservé aux personnes majeures (18 ans révolus)."
     >
       <BasicsForm
         defaults={{

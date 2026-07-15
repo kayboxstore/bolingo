@@ -24,10 +24,10 @@ export default async function BlockedPage() {
     <section className="flex flex-1 flex-col items-center justify-center gap-6 text-center">
       <div className="flex max-w-md flex-col gap-2">
         <h1 className="font-display text-h2 text-ink">
-          Motema est réservé aux adultes
+          Bolingo est réservé aux adultes
         </h1>
         <p className="text-body text-ink/70">
-          Tu dois avoir 18 ans révolus pour utiliser Motema. La création de
+          Tu dois avoir 18 ans révolus pour utiliser Bolingo. La création de
           profil est définitivement bloquée pour ce compte et aucune donnée de
           profil n&apos;est conservée.
         </p>

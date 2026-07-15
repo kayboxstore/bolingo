@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 /**
- * Cœur Motema — contour 2 px, terminaisons arrondies. Couleur via
+ * Cœur Bolingo — contour 2 px, terminaisons arrondies. Couleur via
  * `currentColor` : rose vif (`text-accent`) par défaut d'usage (charte),
  * blanc uniquement sur fond rose vif (bouton Like, cf. comp carte-profil-a).
  * Dans le lockup logo : jamais recoloré (règle charte 01).
@@ -37,12 +37,12 @@ export function Logo({ className = "" }: { className?: string }) {
     <Link
       href="/"
       className={`inline-flex min-w-24 items-center gap-2 ${className}`}
-      aria-label="Motema — accueil"
+      aria-label="Bolingo — accueil"
     >
       {/* 24 px : grille icônes + zone de protection 1× cœur respectée avec gap-6 */}
       <HeartIcon className="h-6 w-6 text-accent" />
       <span className="font-display text-2xl font-bold lowercase tracking-tight text-ink">
-        motema
+        bolingo
       </span>
     </Link>
   );

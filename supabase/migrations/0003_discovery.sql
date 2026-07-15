@@ -1,5 +1,5 @@
 -- ============================================================================
--- Motema — discovery feed
+-- Bolingo — discovery feed
 --   * discover_profiles() RPC : lots de candidats triés par distance (KNN)
 --   * index GiST partiel aligné sur le prédicat du feed
 --   * photos du feed lisibles via une policy Storage dédiée (bucket privé)
