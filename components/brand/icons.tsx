@@ -1,7 +1,11 @@
 /**
  * Icônes structurelles — charte 05 : contour 2 px, terminaisons arrondies,
  * grille 24 px, charbon par défaut (la couleur suit `currentColor`).
+ * Le cœur vit avec le logo (même tracé) mais est ré-exporté ici : ce fichier
+ * est le point d'entrée unique des icônes.
  */
+
+export { HeartIcon } from "@/components/brand/logo";
 
 function Icon({
   path,

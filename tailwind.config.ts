@@ -19,12 +19,19 @@ const config: Config = {
           hover: "#C21D47", // Survol CTA
           fg: "#FFFFFF",
         },
-        accent: "#FF4B72", // Rose vif — cœurs, notifications, logo
+        accent: {
+          DEFAULT: "#FF4B72", // Rose vif — cœurs, notifications, logo
+          hover: "#E13A60", // Survol assombri (pattern charte, jamais l'opacité)
+        },
         ink: "#111111", // Charbon — texte, titres, icônes
         disabled: "#F3F3F4", // Boutons désactivés
         // Hors charte v1.0 (proposé v1.1) : rouge sémantique d'erreur, AA à 13px,
-        // distinct du rose CTA pour ne pas ressembler à un lien.
-        error: "#B3261E",
+        // distinct du rose CTA pour ne pas ressembler à un lien. En fond :
+        // bouton DESTRUCTIF (confirmations irréversibles) uniquement.
+        error: {
+          DEFAULT: "#B3261E",
+          hover: "#8F1E18",
+        },
       },
       borderRadius: {
         card: "1rem",

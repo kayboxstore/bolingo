@@ -6,6 +6,7 @@ import type { DiscoveryBatch, DiscoveryCard } from "@/lib/discover/queries";
 import { HeartIcon } from "@/components/brand/logo";
 import { XIcon } from "@/components/brand/icons";
 import { ProfileCard } from "@/components/discover/profile-card";
+import { MatchModal } from "@/components/discover/match-modal";
 
 const REFILL_THRESHOLD = 3;
 
@@ -18,6 +19,7 @@ export function DiscoverDeck({ initial }: { initial: DiscoveryBatch }) {
   const [exhausted, setExhausted] = useState(initial.exhausted);
   const [isPending, startTransition] = useTransition();
   const [isRefilling, setIsRefilling] = useState(false);
+  const [matchedWith, setMatchedWith] = useState<string | null>(null);
 
   const current = cards[0] ?? null;
 
@@ -38,11 +40,13 @@ export function DiscoverDeck({ initial }: { initial: DiscoveryBatch }) {
 
   function act(verdict: "like" | "pass") {
     if (!current || isPending) return;
+    const acted = current;
     const rest = cards.slice(1);
     // Avance optimiste : l'action est idempotente côté serveur.
     setCards(rest);
     startTransition(async () => {
-      await submitVerdict(current.userId, verdict);
+      const result = await submitVerdict(acted.userId, verdict);
+      if (result.matched) setMatchedWith(acted.displayName);
       if (rest.length <= REFILL_THRESHOLD) void refill(rest);
     });
   }
@@ -59,9 +63,14 @@ export function DiscoverDeck({ initial }: { initial: DiscoveryBatch }) {
     }
   }
 
+  const matchModal = matchedWith && (
+    <MatchModal name={matchedWith} onClose={() => setMatchedWith(null)} />
+  );
+
   if (!current) {
     return (
       <div className="flex flex-col items-center gap-6 rounded-card border border-ink/10 bg-white p-6 text-center shadow-sm">
+        {matchModal}
         <HeartIcon className="h-12 w-12 text-accent" />
         <div className="flex flex-col gap-2">
           <h2 className="font-display text-h3 text-ink">
@@ -86,6 +95,7 @@ export function DiscoverDeck({ initial }: { initial: DiscoveryBatch }) {
 
   return (
     <div className="flex flex-col gap-6">
+      {matchModal}
       <ProfileCard
         card={current}
         actions={

@@ -2,43 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { requireActiveMember } from "@/lib/auth/guards";
 import { loadDiscoveryBatch, type DiscoveryBatch } from "@/lib/discover/queries";
-
-/**
- * Garde des actions de découverte : authentifié, vérifié, compte actif,
- * profil COMPLET (prérequis produit), pas de blocage mineur.
- */
-async function requireDiscoveryUser() {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-  if (!user.email_confirmed_at) redirect("/verify-email");
-
-  const [{ data: account }, { data: profile }] = await Promise.all([
-    supabase
-      .from("users")
-      .select("underage_attempted_at, status")
-      .eq("id", user.id)
-      .single(),
-    supabase
-      .from("profiles")
-      .select("onboarding_completed_at")
-      .eq("user_id", user.id)
-      .maybeSingle(),
-  ]);
-
-  if (account?.underage_attempted_at) redirect("/onboarding/blocked");
-  if (account && account.status !== "active") {
-    await supabase.auth.signOut();
-    redirect("/login");
-  }
-  if (!profile?.onboarding_completed_at) redirect("/onboarding");
-
-  return { supabase, user };
-}
 
 const verdictSchema = z.object({
   likeeId: z.uuid(),
@@ -50,16 +15,20 @@ const verdictSchema = z.object({
  * + ignoreDuplicates neutralisent double-tap et courses. Un profil devenu
  * invisible/suspendu entre chargement et action ne fait pas échouer l'action
  * (le like est inoffensif ; le profil disparaît des lots suivants).
+ *
+ * Renvoie `matched: true` quand le match existe — notification in-app à
+ * chaud. La lecture est effectuée pour CHAQUE like, réciproque ou non :
+ * coût constant, pas d'oracle temporel sur « qui m'a liké ».
  */
 export async function submitVerdict(
   likeeId: string,
   verdict: "like" | "pass",
-): Promise<{ ok: boolean }> {
-  const { supabase, user } = await requireDiscoveryUser();
+): Promise<{ ok: boolean; matched: boolean }> {
+  const { supabase, user } = await requireActiveMember();
 
   const parsed = verdictSchema.safeParse({ likeeId, verdict });
-  if (!parsed.success) return { ok: false };
-  if (parsed.data.likeeId === user.id) return { ok: false };
+  if (!parsed.success) return { ok: false, matched: false };
+  if (parsed.data.likeeId === user.id) return { ok: false, matched: false };
 
   // RLS likes_insert_own garantit liker_id = auth.uid() et l'absence de bloc.
   const { error } = await supabase.from("likes").upsert(
@@ -71,15 +40,31 @@ export async function submitVerdict(
     { onConflict: "liker_id,likee_id", ignoreDuplicates: true },
   );
 
+  let matched = false;
+  if (parsed.data.verdict === "like" && !error) {
+    // Paire canonique. UUID en minuscules AVANT le tri : zod accepte l'hexa
+    // majuscule, or 'F' < 'a' en ASCII inverserait la paire (aucune fuite,
+    // juste un match manqué à l'affichage).
+    const [a, b] = [user.id, parsed.data.likeeId.toLowerCase()].sort();
+    const { data: match } = await supabase
+      .from("matches")
+      .select("id")
+      .eq("user_a", a)
+      .eq("user_b", b)
+      .eq("status", "active")
+      .maybeSingle();
+    matched = Boolean(match);
+  }
+
   // Un échec RLS (bloc apparu entre-temps…) n'est pas une erreur utilisateur.
-  return { ok: !error };
+  return { ok: !error, matched };
 }
 
 /** Recharge un lot en excluant les cartes encore en main côté client. */
 export async function fetchMoreProfiles(
   excludeIds: string[],
 ): Promise<DiscoveryBatch> {
-  await requireDiscoveryUser();
+  await requireActiveMember();
   const exclude = z.array(z.uuid()).max(50).safeParse(excludeIds);
   return loadDiscoveryBatch(exclude.success ? exclude.data : []);
 }
@@ -102,7 +87,7 @@ export async function updateDiscoveryFilters(
   _prev: FiltersState,
   formData: FormData,
 ): Promise<FiltersState> {
-  const { supabase, user } = await requireDiscoveryUser();
+  const { supabase, user } = await requireActiveMember();
 
   const parsed = filtersSchema.safeParse({
     maxDistanceKm: formData.get("maxDistanceKm"),
