@@ -174,9 +174,9 @@ export function Chat({
             className="h-10 w-10 rounded-card object-cover"
           />
         )}
-        <span className="truncate font-display text-body font-semibold text-ink">
+        <h1 className="truncate font-display text-body font-semibold text-ink">
           {header.displayName ?? "Profil indisponible"}
-        </span>
+        </h1>
       </header>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4">
@@ -186,7 +186,7 @@ export function Chat({
               type="button"
               onClick={onLoadOlder}
               disabled={loadingMore}
-              className="rounded-btn border border-ink/15 px-4 py-2 font-display text-legend font-semibold text-ink/70 transition hover:border-ink/40 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+              className="rounded-btn border border-ink/15 px-4 py-2 font-display text-legend font-semibold text-ink transition hover:border-ink/40 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
             >
               {loadingMore ? "Chargement…" : "Messages précédents"}
             </button>
@@ -235,7 +235,13 @@ export function Chat({
                     <button
                       type="button"
                       onClick={() => onDelete(m.id)}
-                      className="underline-offset-2 hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+                      aria-label={`Supprimer mon message de ${new Date(
+                        m.createdAt,
+                      ).toLocaleTimeString("fr-FR", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}`}
+                      className="-my-1 px-1 py-1 underline-offset-2 hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
                     >
                       Supprimer
                     </button>

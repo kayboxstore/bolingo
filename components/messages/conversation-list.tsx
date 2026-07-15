@@ -34,6 +34,7 @@ export function ConversationList({
                 {c.unreadCount > 0 && (
                   <span className="shrink-0 rounded-full bg-brand px-2 py-1 text-legend text-brand-fg">
                     {c.unreadCount}
+                    <span className="sr-only"> messages non lus</span>
                   </span>
                 )}
               </div>
@@ -44,7 +45,7 @@ export function ConversationList({
               >
                 {c.lastMessageDeleted
                   ? "Message supprimé"
-                  : (c.lastMessage ?? "Dites bonjour 👋")}
+                  : (c.lastMessage ?? "Démarre la conversation")}
               </p>
             </div>
           </Link>
