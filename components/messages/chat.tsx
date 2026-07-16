@@ -14,6 +14,7 @@ import { MESSAGE_MAX } from "@/lib/messages/constants";
 import type { ChatMessage, ConversationHeader } from "@/lib/messages/types";
 import { ArrowLeftIcon } from "@/components/brand/icons";
 import { Composer } from "@/components/messages/composer";
+import { ModerationMenu } from "@/components/moderation/moderation-menu";
 
 type Pending = ChatMessage & { status?: "sending" | "failed" };
 
@@ -249,11 +250,16 @@ export function Chat({
             className="h-10 w-10 rounded-card object-cover"
           />
         )}
-        <h1 className="truncate font-display text-body font-semibold text-ink">
+        <h1 className="flex-1 truncate font-display text-body font-semibold text-ink">
           {header.profileAvailable
             ? (header.displayName ?? "Profil indisponible")
             : "Profil indisponible"}
         </h1>
+        <ModerationMenu
+          targetId={header.otherUserId}
+          targetName={header.displayName}
+          onBlocked={() => setClosed(true)}
+        />
       </header>
       {banner && (
         <p
@@ -330,6 +336,18 @@ export function Chat({
                     >
                       Supprimer
                     </button>
+                  )}
+                  {!mine && !deleted && !m.status && (
+                    <ModerationMenu
+                      targetId={header.otherUserId}
+                      targetName={header.displayName}
+                      messageId={m.id}
+                      startMode="report"
+                      triggerText="Signaler"
+                      triggerLabel={`Signaler le message de ${
+                        header.displayName ?? "cette personne"
+                      }`}
+                    />
                   )}
                 </div>
               </li>
