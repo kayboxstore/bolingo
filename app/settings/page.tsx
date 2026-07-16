@@ -4,6 +4,7 @@ import { loadBlocked } from "@/lib/moderation/queries";
 import { AppHeader } from "@/components/app-header";
 import { VisibilityToggle } from "@/components/settings/visibility-toggle";
 import { BlockedList } from "@/components/settings/blocked-list";
+import { DeleteAccount } from "@/components/settings/delete-account";
 
 export const metadata: Metadata = { title: "Réglages" };
 
@@ -34,6 +35,8 @@ export default async function SettingsPage() {
           <h2 className="font-display text-h3 text-ink">Comptes bloqués</h2>
           <BlockedList initial={blocked} />
         </section>
+
+        <DeleteAccount />
       </main>
     </div>
   );

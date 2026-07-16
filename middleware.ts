@@ -18,6 +18,8 @@ const AUTH_PATHS = [
   "/signup",
   "/forgot-password",
   "/verify-email",
+  // Écran de confirmation après suppression : atteint une fois la session coupée.
+  "/account-deleted",
 ];
 
 function matches(path: string, bases: string[]): boolean {
