@@ -77,6 +77,19 @@ supabase/
 - **Chat own-message bubbles use `bg-brand text-brand-fg`** (AA 4.6:1) — same rationale as text badges: rose
   vif (`accent`) fails AA under white text, so CTA rose is the only rose that works as a text background.
   Received bubbles use `bg-disabled text-ink`.
+- **Splash screen gradient — documented exception.** `components/splash-screen.tsx` (first-session loading
+  screen, Framer Motion) uses a rose→warm-white **linear gradient** background plus drifting petals: a
+  deliberate, owner-approved derogation to the general "flat design, zéro dégradé" rule, **scoped to this one
+  file only**. The rest of the app stays flat. `design-system-auditor` must not flag the gradient/petals on
+  this file as a deviation. The "Touchez pour passer" hint colour is likewise an accepted design choice on
+  this screen. The splash reuses the shared `<Logo variant="white" asLink={false} />` (no nested anchor — the
+  whole overlay is the click target).
+- **`Logo variant="white"` — sanctioned inverted lockup.** The default `Logo` keeps the charte's bicolour
+  lockup (rose-vif heart + ink wordmark, never recoloured — charte 01). `variant="white"` recolours **both**
+  the heart *and* the wordmark to white as a single monochrome inverted lockup, a **documented derogation** to
+  "don't recolour the heart in the lockup", **reserved for solid rose-vif/`accent` brand backgrounds** (today:
+  the splash only). White stays legal only on rose-vif, so the contrast rule holds. `asLink={false}` renders
+  the lockup as a decorative `<span aria-hidden>` for cases where an ancestor is already the link/click target.
 
 ## Data model (see migration for the source of truth)
 
