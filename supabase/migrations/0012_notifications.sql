@@ -21,12 +21,15 @@ create table public.notifications (
   created_at   timestamptz not null default now(),
   read_at      timestamptz
 );
+-- created_at + id : keyset avec départage (created_at seul saute une ligne si
+-- deux notifs partagent le même instant — cf. messages_page 0007).
 create index notifications_recipient_idx
-  on public.notifications (recipient_id, created_at desc);
+  on public.notifications (recipient_id, created_at desc, id desc);
 create index notifications_unread_idx
   on public.notifications (recipient_id) where read_at is null;
--- Sert le collapse (une seule notif message non lue par conversation).
-create index notifications_msg_open_idx
+-- Collapse : au plus UNE notif message non lue par (destinataire, conversation).
+-- UNIQUE → le ON CONFLICT de notify_new_message est réellement race-safe.
+create unique index notifications_msg_open_idx
   on public.notifications (recipient_id, match_id)
   where type = 'new_message' and read_at is null;
 
@@ -98,18 +101,13 @@ begin
     return new;  -- destinataire actif dans la conversation
   end if;
 
-  if exists (
-    select 1 from public.notifications n
-    where n.recipient_id = v_recipient
-      and n.match_id = new.match_id
-      and n.type = 'new_message'
-      and n.read_at is null
-  ) then
-    return new;  -- collapse
-  end if;
-
+  -- Collapse race-safe : l'index partiel unique (recipient_id, match_id) where
+  -- type='new_message' and read_at is null garantit au plus une notif message
+  -- non lue par conversation, même sous insertions concurrentes.
   insert into public.notifications (recipient_id, type, actor_id, match_id)
-  values (v_recipient, 'new_message', new.sender_id, new.match_id);
+  values (v_recipient, 'new_message', new.sender_id, new.match_id)
+  on conflict (recipient_id, match_id) where (type = 'new_message' and read_at is null)
+  do nothing;
   return new;
 end;
 $$;
@@ -150,7 +148,8 @@ create trigger match_reads_notif_clear
 -- conversations unmatchées restent visibles (match_active=false → lien dégradé
 -- côté app, pas de 404).
 create or replace function public.list_notifications(
-  p_before timestamptz default null,
+  p_before_created_at timestamptz default null,
+  p_before_id uuid default null,
   p_limit int default 20
 )
 returns table (
@@ -188,14 +187,19 @@ begin
         or (private.user_is_active(n.actor_id)
             and not private.blocks_between(auth.uid(), n.actor_id))
       )
-      and (p_before is null or n.created_at < p_before)
-    order by n.created_at desc
+      -- Keyset avec départage (created_at, id) : pas de ligne sautée si deux
+      -- notifs partagent le même instant.
+      and (
+        p_before_created_at is null
+        or (n.created_at, n.id) < (p_before_created_at, p_before_id)
+      )
+    order by n.created_at desc, n.id desc
     limit least(greatest(p_limit, 1), 50);
 end;
 $$;
-revoke all on function public.list_notifications(timestamptz, int) from public;
-revoke execute on function public.list_notifications(timestamptz, int) from anon;
-grant execute on function public.list_notifications(timestamptz, int) to authenticated;
+revoke all on function public.list_notifications(timestamptz, uuid, int) from public;
+revoke execute on function public.list_notifications(timestamptz, uuid, int) from anon;
+grant execute on function public.list_notifications(timestamptz, uuid, int) to authenticated;
 
 -- Compteur non-lu (badge), même filtre de visibilité.
 create or replace function public.unread_notifications_count()

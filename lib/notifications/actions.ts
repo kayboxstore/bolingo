@@ -5,14 +5,19 @@ import { z } from "zod";
 import { requireActiveMember } from "@/lib/auth/guards";
 import { loadNotifications, type NotificationItem } from "@/lib/notifications/queries";
 
-/** Pagination du centre de notifications (keyset sur created_at). */
-export async function fetchMoreNotifications(
-  before: string,
-): Promise<{ items: NotificationItem[]; hasMore: boolean }> {
+const cursorSchema = z.object({
+  createdAt: z.string().min(1).max(40),
+  id: z.uuid(),
+});
+
+/** Pagination du centre de notifications (keyset (created_at, id)). */
+export async function fetchMoreNotifications(cursor: {
+  createdAt: string;
+  id: string;
+}): Promise<{ items: NotificationItem[]; hasMore: boolean }> {
   await requireActiveMember();
-  // Curseur d'origine serveur (created_at d'une notif) ; le cast timestamptz de
-  // la RPC est le vrai validateur de format.
-  const parsed = z.string().min(1).max(40).safeParse(before);
+  // Curseur d'origine serveur ; le cast timestamptz de la RPC valide le format.
+  const parsed = cursorSchema.safeParse(cursor);
   if (!parsed.success) return { items: [], hasMore: false };
   return loadNotifications(parsed.data);
 }
@@ -33,18 +38,19 @@ export async function markAllNotificationsRead(): Promise<{ ok: boolean }> {
 export async function openNotification(
   id: string,
 ): Promise<{ ok: boolean; target: string }> {
-  const { supabase } = await requireActiveMember();
+  const { supabase, user } = await requireActiveMember();
   const parsed = z.uuid().safeParse(id);
   if (!parsed.success) return { ok: false, target: "/notifications" };
 
   await supabase.rpc("mark_notification_read", { p_id: parsed.data });
 
-  // Cible résolue à l'instant du clic (RLS : on ne lit que sa propre notif et
-  // un match dont on est participant).
+  // Cible résolue à l'instant du clic. Filtre recipient_id explicite (défense en
+  // profondeur, en plus de la RLS notifications_select_own).
   const { data: notif } = await supabase
     .from("notifications")
     .select("match_id")
     .eq("id", parsed.data)
+    .eq("recipient_id", user.id)
     .maybeSingle();
 
   let target = "/notifications";

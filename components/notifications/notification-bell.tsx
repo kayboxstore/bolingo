@@ -21,9 +21,12 @@ export function NotificationBell({ initialUnread }: { initialUnread: number }) {
       if (stopped) return;
       es = new EventSource("/api/notifications/stream");
       es.onmessage = (e) => {
-        const evt = JSON.parse(e.data) as
-          | { type: "ready" }
-          | { type: "count"; unread: number };
+        let evt: { type: "ready" } | { type: "count"; unread: number };
+        try {
+          evt = JSON.parse(e.data);
+        } catch {
+          return; // payload malformé : on ignore
+        }
         if (evt.type === "count") setUnread(evt.unread);
       };
       es.onerror = () => {
@@ -57,8 +60,10 @@ export function NotificationBell({ initialUnread }: { initialUnread: number }) {
     >
       <BellIcon className="h-6 w-6" />
       {unread > 0 && (
+        // Badge TEXTE → bg-brand text-brand-fg (AA 4.6:1) ; le rose vif (accent)
+        // échoue AA sous du texte (réservé aux points sans chiffre).
         <span
-          className="absolute right-0 top-0 flex min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[11px] font-semibold leading-4 text-white"
+          className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-brand px-1 text-legend font-semibold text-brand-fg"
           aria-hidden="true"
         >
           {unread > 9 ? "9+" : unread}

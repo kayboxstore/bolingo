@@ -21,7 +21,7 @@ export default async function NotificationsPage() {
           <NotificationList initial={items} initialHasMore={hasMore} />
         ) : (
           <div className="flex flex-col items-center gap-6 rounded-card border border-ink/10 bg-white p-6 text-center shadow-sm">
-            <BellIcon className="h-12 w-12 text-ink/40" />
+            <BellIcon className="h-12 w-12 text-accent" />
             <p className="text-body text-ink/70">
               Aucune notification pour l&apos;instant.
             </p>

@@ -35,18 +35,21 @@ export async function unreadNotificationsCount(): Promise<number> {
   return typeof data === "number" ? data : 0;
 }
 
+export type NotificationCursor = { createdAt: string; id: string };
+
 /**
- * Page de notifications (RPC DEFINER list_notifications, keyset sur created_at).
+ * Page de notifications (RPC DEFINER list_notifications, keyset (created_at, id)).
  * La RPC masque déjà les notifs dont l'acteur est suspendu/supprimé/bloqué.
- * `before` = created_at de la dernière notif affichée (pagination).
+ * `cursor` = (created_at, id) de la dernière notif affichée (pagination).
  */
-export async function loadNotifications(before?: string): Promise<{
+export async function loadNotifications(cursor?: NotificationCursor): Promise<{
   items: NotificationItem[];
   hasMore: boolean;
 }> {
   const supabase = createClient();
   const { data, error } = await supabase.rpc("list_notifications", {
-    p_before: before ?? undefined,
+    p_before_created_at: cursor?.createdAt ?? undefined,
+    p_before_id: cursor?.id ?? undefined,
     p_limit: NOTIFICATIONS_PAGE_SIZE,
   });
   if (error || !data) return { items: [], hasMore: false };

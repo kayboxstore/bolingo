@@ -60,7 +60,7 @@ export function NotificationList({
         ok: false,
         target: "/notifications",
       }));
-      router.push(res.target ?? "/matches");
+      router.push(res.target);
     });
   }
 
@@ -69,7 +69,10 @@ export function NotificationList({
     if (loadingMore || !last) return;
     setLoadingMore(true);
     try {
-      const more = await fetchMoreNotifications(last.createdAt);
+      const more = await fetchMoreNotifications({
+        createdAt: last.createdAt,
+        id: last.id,
+      });
       setItems((prev) => [...prev, ...more.items]);
       setHasMore(more.hasMore);
     } finally {
@@ -78,7 +81,7 @@ export function NotificationList({
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       <ul className="flex flex-col gap-2">
         {items.map((n) => (
           <li key={n.id}>
@@ -102,8 +105,10 @@ export function NotificationList({
                   <HeartIcon className="h-6 w-6 text-accent" />
                 </div>
               )}
-              <div className="flex min-w-0 flex-1 flex-col gap-1">
-                <span className="truncate text-body text-ink">{label(n)}</span>
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <span className="truncate font-display text-body font-semibold text-ink">
+                  {label(n)}
+                </span>
                 <time
                   dateTime={n.createdAt}
                   suppressHydrationWarning
