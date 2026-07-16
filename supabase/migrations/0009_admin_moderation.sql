@@ -116,21 +116,20 @@ revoke select on table public.users from authenticated, anon;
 grant select (id, status, underage_attempted_at)
   on table public.users to authenticated;
 
--- users_update_self (0001) comparait is_admin/status via une lecture DIRECTE de
--- la colonne is_admin, ce qui exige SELECT sur is_admin (désormais révoqué) →
--- tout UPDATE self échouerait (permission denied for column is_admin). Le vrai
--- verrou anti-escalade reste le privilège UPDATE colonne (0002 : seul
--- last_active_at modifiable). On repasse la comparaison is_admin par le helper
--- DEFINER (le LHS is_admin est la valeur de la LIGNE écrite, pas une lecture de
--- table) ; status reste lisible (whitelisté ci-dessus).
+-- users_update_self (0001) épinglait is_admin/status dans le WITH CHECK par
+-- référence directe aux colonnes. Or Postgres exige le privilège SELECT sur
+-- TOUTE colonne référencée dans une expression de policy (markVarForSelectPriv,
+-- agnostique « ancienne/nouvelle valeur » — précisément pour qu'une policy ne
+-- serve pas d'oracle de lecture). is_admin étant désormais non-SELECT-able,
+-- garder cette référence casserait TOUT UPDATE self (même last_active_at) avec
+-- « permission denied for column is_admin ».
+-- On retire ces pins : le vrai verrou anti-escalade est déjà le privilège UPDATE
+-- COLONNE (0002 : seul last_active_at accordé) — PostgREST refuse tout PATCH
+-- incluant is_admin/status avant même l'évaluation RLS. Les pins étaient une
+-- défense en profondeur redondante, et cassante ici.
 drop policy if exists users_update_self on public.users;
 create policy users_update_self on public.users
-  for update using (auth.uid() = id)
-  with check (
-    auth.uid() = id
-    and is_admin = private.is_admin(auth.uid())
-    and status = (select u.status from public.users u where u.id = auth.uid())
-  );
+  for update using (auth.uid() = id) with check (auth.uid() = id);
 
 -- reports : l'UPDATE direct restait ouvert aux admins via reports_update_admin
 -- (0001, jamais fermée). Un PATCH PostgREST pouvait réécrire evidence_content /
