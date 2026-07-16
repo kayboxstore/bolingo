@@ -78,6 +78,11 @@ supabase/
 - **Chat own-message bubbles use `bg-brand text-brand-fg`** (AA 4.6:1) — same rationale as text badges: rose
   vif (`accent`) fails AA under white text, so CTA rose is the only rose that works as a text background.
   Received bubbles use `bg-disabled text-ink`.
+- **Unread list-row highlight** (`components/notifications/notification-list.tsx`): an unread notification row
+  (the whole row is a `<button>`) uses `border-brand/20 bg-brand/5` to stand out at a glance; a read row is
+  `border-ink/10 bg-white`. Sanctioned tint use of `brand` as a faint pressable-row background (distinct from
+  CTA fill / chat bubble / text badge). The unread **dot** stays `bg-accent` (non-text feedback), consistent
+  with the matches/nav dots.
 - **Splash screen gradient — documented exception.** `components/splash-screen.tsx` (first-session loading
   screen, Framer Motion) uses a rose→warm-white **linear gradient** background plus drifting petals: a
   deliberate, owner-approved derogation to the general "flat design, zéro dégradé" rule, **scoped to this one
