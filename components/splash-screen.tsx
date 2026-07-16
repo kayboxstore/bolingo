@@ -13,7 +13,7 @@
  * Dépendance : framer-motion (npm install framer-motion).
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Logo } from '@/components/brand/logo';
 
@@ -112,15 +112,24 @@ export function SplashScreen() {
   const [phase, setPhase] = useState<Phase>('heart');
   const [showSlogan, setShowSlogan] = useState(false);
   const prefersReduced = useReducedMotion();
+  // Timers stockés en ref pour pouvoir les purger aussi lors d'un dismiss
+  // manuel (clic/clavier), pas seulement au démontage du composant.
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const clearTimers = useCallback(() => {
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
+  }, []);
 
   const dismiss = useCallback(() => {
+    clearTimers();
     try {
       sessionStorage.setItem(SESSION_KEY, '1');
     } catch {
       /* sessionStorage indisponible : on ferme quand même */
     }
     setVisible(false);
-  }, []);
+  }, [clearTimers]);
 
   useEffect(() => {
     setMounted(true);
@@ -133,24 +142,34 @@ export function SplashScreen() {
     if (seen) return; // déjà vu cette session : ne pas réafficher
 
     setVisible(true);
-    const timers: ReturnType<typeof setTimeout>[] = [];
 
     if (prefersReduced) {
       // Version statique : logo + slogan, sans battement, ~1,5 s.
       setPhase('logo');
       setShowSlogan(true);
-      timers.push(setTimeout(dismiss, REDUCED_MS));
+      timersRef.current.push(setTimeout(dismiss, REDUCED_MS));
     } else {
       // Phase 1 → Phase 2
-      timers.push(
+      timersRef.current.push(
         setTimeout(() => setPhase('logo'), HEART_MS),
         setTimeout(() => setShowSlogan(true), HEART_MS + SLOGAN_DELAY_MS),
         setTimeout(dismiss, HEART_MS + LOGO_MS),
       );
     }
 
-    return () => timers.forEach(clearTimeout);
-  }, [prefersReduced, dismiss]);
+    return clearTimers;
+  }, [prefersReduced, dismiss, clearTimers]);
+
+  // Échap : passer l'écran au clavier (équivalent du tap ; le bouton hint
+  // couvre Entrée/Espace quand il a le focus).
+  useEffect(() => {
+    if (!visible) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') dismiss();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [visible, dismiss]);
 
   // Rien côté serveur ni au premier rendu client → pas de mismatch.
   if (!mounted) return null;
@@ -218,9 +237,17 @@ export function SplashScreen() {
             )}
           </AnimatePresence>
 
-          <span className="pointer-events-none absolute bottom-9 text-sm font-semibold text-[#C21D47]">
+          {/* Chip clair : garantit le contraste AA du hint quelle que soit la
+              teinte du dégradé sous lui (sa position fixe tombe dans une zone
+              plus ou moins rose selon la hauteur d'écran). Sert aussi de
+              contrôle focusable pour passer l'écran au clavier. */}
+          <button
+            type="button"
+            onClick={dismiss}
+            className="absolute bottom-8 rounded-full bg-white/85 px-4 py-1.5 text-legend font-semibold text-brand-hover shadow-sm transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+          >
             Touchez pour passer
-          </span>
+          </button>
         </motion.div>
       )}
     </AnimatePresence>
