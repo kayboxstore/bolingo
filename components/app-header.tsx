@@ -1,19 +1,24 @@
 import Link from "next/link";
 import { Logo } from "@/components/brand/logo";
 import { signOut } from "@/lib/auth/actions";
+import { unreadNotificationsCount } from "@/lib/notifications/queries";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 
 /**
  * En-tête applicatif commun. `nav` s'affiche pour les profils complets ;
  * `unseenMatches` pose une pastille accent sur « Matches » (notification
- * in-app de nouveau match).
+ * in-app de nouveau match). La cloche (compteur non-lu live) n'apparaît qu'en
+ * mode `nav` (contextes membre actif).
  */
-export function AppHeader({
+export async function AppHeader({
   nav = false,
   unseenMatches = 0,
 }: {
   nav?: boolean;
   unseenMatches?: number;
 }) {
+  const unread = nav ? await unreadNotificationsCount() : 0;
+
   return (
     <header className="flex items-center justify-between border-b border-ink/10 px-6 py-4">
       <Logo />
@@ -58,6 +63,7 @@ export function AppHeader({
             </Link>
           </nav>
         )}
+        {nav && <NotificationBell initialUnread={unread} />}
         <form action={signOut}>
           <button
             type="submit"
