@@ -24,7 +24,7 @@
 -- (sinon updated_at, censé refléter la résolution, dériverait vers la date de
 -- purge). Défaut absent → comportement inchangé partout ailleurs.
 create or replace function public.set_updated_at()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql set search_path = '' as $$
 begin
   if coalesce(current_setting('bolingo.skip_touch', true), '') = 'on' then
     return new;
