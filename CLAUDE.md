@@ -48,7 +48,8 @@ supabase/
 ### Design decisions on top of the charte v1.0 (proposed for v1.1)
 
 - **Heading scale mapping**: full-page hero → `text-h1`; section pages → `text-h2`; titles inside the
-  448px auth card → `text-h3`.
+  448px auth card → `text-h3`; **list-row / card-row titles** (a match name, a report category in a queue) →
+  `text-body font-display font-semibold` — a mini-title, deliberately below the `h3` step.
 - **`error` token `#B3261E`**: the charte defines no error color. Rose vif fails AA as text and CTA rose
   reads as a link; errors use the dedicated `text-error` token instead. `text-brand` is for links/CTAs only.
 - **Secondary (ghost) button** (`border-ink/15 text-ink`): approved variant, e.g. "Se connecter" on the landing.
