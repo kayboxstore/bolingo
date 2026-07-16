@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Poppins } from "next/font/google";
 import "./globals.css";
+import { SplashScreen } from "@/components/splash-screen";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -30,7 +31,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="fr" className={`${inter.variable} ${poppins.variable}`}>
-      <body>{children}</body>
+      <body>
+        {children}
+        {/* Overlay fixe (z-9999), affiché une seule fois par session, monté
+            client uniquement — s'auto-neutralise côté serveur (mounted gate). */}
+        <SplashScreen />
+      </body>
     </html>
   );
 }
