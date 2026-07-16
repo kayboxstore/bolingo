@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 
@@ -78,6 +78,32 @@ export async function requireActiveMember() {
     redirect("/login");
   }
   if (!profile?.onboarding_completed_at) redirect("/onboarding");
+
+  return { supabase, user };
+}
+
+/**
+ * Garde des surfaces admin (back-office modération). Un admin est un simple
+ * compte `users.is_admin = true` — pas forcément un membre au profil complet,
+ * donc indépendant de requireActiveMember.
+ *
+ * Tout appelant non authentifié OU non-admin est traité comme une route
+ * INEXISTANTE (`notFound()` → 404) : aucune redirection, aucun message, aucune
+ * fuite de l'existence de `/admin`. Le contrôle réel vit aussi en base (chaque
+ * RPC admin re-vérifie `is_admin`) — ceci est la couche « masquage de route ».
+ */
+export async function requireAdmin(): Promise<{
+  supabase: SupabaseClient;
+  user: User;
+}> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) notFound();
+
+  const { data: isAdmin, error } = await supabase.rpc("current_user_is_admin");
+  if (error || isAdmin !== true) notFound();
 
   return { supabase, user };
 }
