@@ -66,7 +66,11 @@ supabase/
 - Focus rings on non-field controls: `ring-brand` full-strength + `ring-offset-2` (`ring-brand/25` alone
   fails WCAG 1.4.11; it is only acceptable on fields that also switch their border to brand).
 - **Destructive button**: `bg-error text-white` + `hover:bg-error-hover` (never opacity — the charte darkens
-  on hover). Reserved for irreversible confirmations (e.g. unmatch "Confirmer").
+  on hover). Reserved for irreversible **or safety-critical** confirmations — the *actual confirming CTA*, e.g.
+  unmatch "Confirmer" and the block dialog's "Confirmer le blocage" (block is reversible via settings, but is a
+  high-friction safety action where a red confirm is the expected affordance). The menu *entry* that merely
+  navigates to that confirmation ("Bloquer" in the ⋯ menu) stays the ghost variant (`border-ink/15 text-ink`) —
+  `text-error` is reserved for the destructive CTA itself, not for links leading to it.
 - Copy: no anglicisms — the unmatch action reads **"Retirer"** (aria-label spells out the target), not "Unmatch".
 - Modals use the native `<dialog>` + `showModal()` (free focus trap, Escape, backdrop inertia) — never a
   hand-rolled `role="dialog"` overlay (no trap = WCAG 2.4.3 failure).

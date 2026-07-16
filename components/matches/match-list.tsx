@@ -124,6 +124,7 @@ export function MatchList({ initial }: { initial: MatchItem[] }) {
               <ModerationMenu
                 targetId={item.otherUserId}
                 targetName={item.displayName}
+                triggerLabel={`Options de modération pour ${item.displayName ?? "ce match"}`}
                 onBlocked={() => onBlocked(item)}
               />
             </div>

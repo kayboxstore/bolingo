@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { blockUser, submitReport } from "@/lib/moderation/actions";
 import {
   REPORT_CATEGORIES,
   REPORT_CATEGORY_LABELS,
   REPORT_DETAILS_MAX,
+  type ReportCategory,
 } from "@/lib/moderation/constants";
 import { EllipsisIcon } from "@/components/brand/icons";
 
@@ -23,7 +24,7 @@ export function ModerationMenu({
   onBlocked,
   triggerText,
   triggerClassName = "flex h-10 w-10 items-center justify-center rounded-full text-ink/70 transition hover:bg-ink/5 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2",
-  triggerLabel = "Options de modération",
+  triggerLabel,
   startMode = "menu",
 }: {
   targetId: string;
@@ -33,6 +34,11 @@ export function ModerationMenu({
   /** Si fourni, un déclencheur texte (« Signaler ») au lieu de l'icône ⋯. */
   triggerText?: string;
   triggerClassName?: string;
+  /**
+   * Nom accessible du déclencheur. Sur l'icône ⋯, défaut « Options de
+   * modération » ; sur un déclencheur texte, précise le contexte (le texte
+   * visible sert de nom par défaut si non fourni).
+   */
   triggerLabel?: string;
   /** Ouvre directement en mode signalement (report d'un message précis). */
   startMode?: Mode;
@@ -41,9 +47,16 @@ export function ModerationMenu({
   const [mode, setMode] = useState<Mode>(startMode);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [category, setCategory] = useState<string>(REPORT_CATEGORIES[0]);
+  const [category, setCategory] = useState<ReportCategory>(REPORT_CATEGORIES[0]);
   const [details, setDetails] = useState("");
   const [reported, setReported] = useState(false);
+  // ids uniques : ce composant est monté plusieurs fois sur une même page
+  // (un par match, un par message reçu) — des id codés en dur casseraient
+  // l'unicité dont dépend aria-labelledby / htmlFor.
+  const uid = useId();
+  const titleId = `mod-title-${uid}`;
+  const detailsId = `mod-details-${uid}`;
+  const categoryName = `mod-category-${uid}`;
 
   const who = targetName ?? "cette personne";
 
@@ -51,6 +64,7 @@ export function ModerationMenu({
     setMode(startMode);
     setError(null);
     setReported(false);
+    setPending(false);
     dialogRef.current?.showModal();
   }
   function close() {
@@ -64,10 +78,11 @@ export function ModerationMenu({
       setMode(startMode);
       setDetails("");
       setCategory(REPORT_CATEGORIES[0]);
+      setPending(false);
     };
     d.addEventListener("close", onClose);
     return () => d.removeEventListener("close", onClose);
-  }, []);
+  }, [startMode]);
 
   async function onBlock() {
     setPending(true);
@@ -105,6 +120,7 @@ export function ModerationMenu({
         <button
           type="button"
           onClick={open}
+          aria-label={triggerLabel}
           className="-my-1 px-1 py-1 underline-offset-2 hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
         >
           {triggerText}
@@ -113,7 +129,7 @@ export function ModerationMenu({
         <button
           type="button"
           onClick={open}
-          aria-label={triggerLabel}
+          aria-label={triggerLabel ?? "Options de modération"}
           className={triggerClassName}
         >
           <EllipsisIcon className="h-6 w-6" />
@@ -122,12 +138,12 @@ export function ModerationMenu({
 
       <dialog
         ref={dialogRef}
-        aria-labelledby="mod-title"
+        aria-labelledby={titleId}
         className="w-full max-w-sm rounded-card bg-white p-6 shadow-sm backdrop:bg-ink/60"
       >
         {mode === "menu" && (
           <div className="flex flex-col gap-4">
-            <h2 id="mod-title" className="font-display text-h3 text-ink">
+            <h2 id={titleId} className="font-display text-h3 text-ink">
               {who}
             </h2>
             <div className="flex flex-col gap-2">
@@ -141,7 +157,7 @@ export function ModerationMenu({
               <button
                 type="button"
                 onClick={() => setMode("block")}
-                className="w-full rounded-btn border border-ink/15 px-4 py-4 text-left font-display text-body font-semibold text-error transition hover:border-error/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+                className="w-full rounded-btn border border-ink/15 px-4 py-4 text-left font-display text-body font-semibold text-ink transition hover:border-ink/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
               >
                 Bloquer
               </button>
@@ -160,12 +176,13 @@ export function ModerationMenu({
         {mode === "block" && (
           <div className="flex flex-col gap-6">
             <div className="flex flex-col gap-2">
-              <h2 id="mod-title" className="font-display text-h3 text-ink">
+              <h2 id={titleId} className="font-display text-h3 text-ink">
                 Bloquer {who} ?
               </h2>
               <p className="text-body text-ink/70">
-                Vous ne verrez plus vos profils respectifs et votre conversation
-                deviendra inaccessible. Tu pourras débloquer depuis les réglages.
+                Tu ne verras plus son profil et ta conversation avec cette
+                personne deviendra inaccessible. Tu pourras débloquer depuis les
+                réglages.
               </p>
             </div>
             {error && (
@@ -197,7 +214,7 @@ export function ModerationMenu({
         {mode === "report" && (
           <div className="flex flex-col gap-6">
             <div className="flex flex-col gap-2">
-              <h2 id="mod-title" className="font-display text-h3 text-ink">
+              <h2 id={titleId} className="font-display text-h3 text-ink">
                 Signaler {who}
               </h2>
               {messageId && (
@@ -228,26 +245,26 @@ export function ModerationMenu({
                   {REPORT_CATEGORIES.map((c) => (
                     <label
                       key={c}
-                      className="flex cursor-pointer items-center gap-2 rounded-btn border border-ink/15 px-4 py-2 text-body text-ink has-[:checked]:border-brand has-[:checked]:bg-brand/5"
+                      className="flex cursor-pointer items-center gap-2 rounded-btn border border-ink/15 px-4 py-2 text-body text-ink transition has-[:checked]:border-brand has-[:checked]:bg-brand/5 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand has-[:focus-visible]:ring-offset-2"
                     >
                       <input
                         type="radio"
-                        name="report-category"
+                        name={categoryName}
                         value={c}
                         checked={category === c}
                         onChange={() => setCategory(c)}
-                        className="accent-brand"
+                        className="accent-brand focus-visible:outline-none"
                       />
                       {REPORT_CATEGORY_LABELS[c]}
                     </label>
                   ))}
                 </fieldset>
                 <div className="flex flex-col gap-2">
-                  <label htmlFor="report-details" className="text-legend text-ink">
+                  <label htmlFor={detailsId} className="text-legend text-ink">
                     Détails <span className="text-ink/70">(facultatif)</span>
                   </label>
                   <textarea
-                    id="report-details"
+                    id={detailsId}
                     value={details}
                     onChange={(e) => setDetails(e.target.value.slice(0, REPORT_DETAILS_MAX))}
                     rows={3}

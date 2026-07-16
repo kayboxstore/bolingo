@@ -13,13 +13,27 @@
 --   * RPC list_blocked (voir qui on a bloqué malgré le masquage RLS)
 -- ============================================================================
 
--- ------------------------------------------------ reports : écriture verrouillée
--- Le client ne renseigne que les champs du signalement — jamais status /
--- updated_at (réservés à la modération admin).
+-- ------------------------------------- reports : écriture EXCLUSIVEMENT via RPC
+-- La policy directe reports_insert_own (0001) ne réplique AUCUN des garde-fous
+-- de submit_report (compte actif, validation de la preuve, dédup, snapshot
+-- serveur du handle) : un INSERT PostgREST direct les court-circuitait tous
+-- (compte suspendu qui écrit, preuve d'un autre match, reported_handle
+-- falsifié, spam). On ferme le chemin direct — submit_report (SECURITY DEFINER,
+-- propriétaire de la table, non affecté par la révocation de grant) reste seul
+-- habilité à écrire. Même correctif que 0007 pour messages/matches.
+drop policy if exists reports_insert_own on public.reports;
 revoke insert on table public.reports from authenticated, anon;
-grant insert (reporter_id, reported_id, reported_handle, category, reason,
-              details, message_id)
-  on table public.reports to authenticated;
+
+-- Dédup ouverte race-safe : au plus UN signalement ouvert par paire
+-- (rapporteur, cible). Sert aussi d'index à la vérification de dédup (l'ancien
+-- check-then-insert n'était ni race-safe ni indexé).
+create unique index if not exists reports_open_pair_uq
+  on public.reports (reporter_id, reported_id)
+  where status in ('open', 'reviewing');
+
+-- Anti-flooding multi-cibles : indexe le plafond horaire par rapporteur.
+create index if not exists reports_reporter_recent_idx
+  on public.reports (reporter_id, created_at);
 
 -- ------------------------------------------------------------- submit_report()
 -- DEFINER : renseigne reported_handle (snapshot du display_name, qui survit à
@@ -47,12 +61,25 @@ begin
     raise exception 'invalid target' using errcode = 'check_violation';
   end if;
 
-  -- Le message-preuve doit appartenir à une conversation entre les deux.
+  -- Anti-flooding : plafonne le volume horaire de signalements du rapporteur
+  -- (la dédup ne borne qu'une même cible ; ceci borne le flux multi-cibles
+  -- vers la file de modération).
+  if (
+    select count(*) from public.reports r
+    where r.reporter_id = auth.uid()
+      and r.created_at > now() - interval '1 hour'
+  ) >= 20 then
+    raise exception 'too many reports' using errcode = 'check_violation';
+  end if;
+
+  -- Le message-preuve doit appartenir à une conversation VIVANTE entre les deux
+  -- (un message supprimé — contenu déjà scrubé — ne prouve rien).
   if p_message_id is not null and not exists (
     select 1
     from public.messages msg
     join public.matches m on m.id = msg.match_id
     where msg.id = p_message_id
+      and msg.deleted_at is null
       and ((m.user_a = auth.uid() and m.user_b = p_reported)
         or (m.user_b = auth.uid() and m.user_a = p_reported))
   ) then
@@ -60,25 +87,17 @@ begin
       using errcode = 'check_violation';
   end if;
 
-  -- Dédup : un signalement ouvert du même rapporteur sur la même cible dans
-  -- les dernières 24 h → no-op (anti-spam, idempotent).
-  if exists (
-    select 1 from public.reports r
-    where r.reporter_id = auth.uid()
-      and r.reported_id = p_reported
-      and r.status in ('open', 'reviewing')
-      and r.created_at > now() - interval '24 hours'
-  ) then
-    return;
-  end if;
-
   select display_name into handle
   from public.profiles where user_id = p_reported;
 
+  -- Dédup race-safe : l'index partiel unique reports_open_pair_uq garantit au
+  -- plus un signalement ouvert par paire ; un doublon concurrent no-op.
   insert into public.reports
     (reporter_id, reported_id, reported_handle, category, reason, details, message_id)
   values
-    (auth.uid(), p_reported, handle, p_category, p_category::text, p_details, p_message_id);
+    (auth.uid(), p_reported, handle, p_category, p_category::text, p_details, p_message_id)
+  on conflict (reporter_id, reported_id) where status in ('open', 'reviewing')
+  do nothing;
 end;
 $$;
 revoke all on function public.submit_report(uuid, report_category, text, uuid) from public;
@@ -110,6 +129,7 @@ language sql stable security definer set search_path = '' as $$
     order by pp.position limit 1
   ) photo on true
   where b.blocker_id = auth.uid()
+    and private.caller_active()
   order by b.created_at desc;
 $$;
 revoke all on function public.list_blocked() from public;

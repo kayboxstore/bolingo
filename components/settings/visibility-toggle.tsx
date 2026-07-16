@@ -14,11 +14,12 @@ export function VisibilityToggle({
 }) {
   const [visible, setVisible] = useState(initialVisible);
   const [error, setError] = useState<string | null>(null);
-  const [, startTransition] = useTransition();
+  const [isPending, startTransition] = useTransition();
   const labelId = useId();
   const descId = useId();
 
   function toggle() {
+    if (isPending) return; // pas de bascule concurrente (double-clic)
     const next = !visible;
     setVisible(next); // optimiste
     setError(null);
@@ -50,7 +51,8 @@ export function VisibilityToggle({
           aria-labelledby={labelId}
           aria-describedby={descId}
           onClick={toggle}
-          className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 ${
+          disabled={isPending}
+          className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-60 ${
             visible ? "bg-brand" : "bg-disabled"
           }`}
         >

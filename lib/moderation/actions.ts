@@ -3,7 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireActiveMember } from "@/lib/auth/guards";
-import { REPORT_CATEGORIES, REPORT_DETAILS_MAX } from "@/lib/moderation/constants";
+import {
+  REPORT_CATEGORIES,
+  REPORT_DETAILS_MAX,
+  type ReportCategory,
+} from "@/lib/moderation/constants";
 
 /**
  * Bloque un utilisateur. Idempotent (contrainte unique blocker/blocked →
@@ -41,8 +45,12 @@ export async function unblockUser(targetId: string): Promise<{ ok: boolean }> {
     .eq("blocker_id", user.id)
     .eq("blocked_id", parsed.data);
 
-  revalidatePath("/settings");
+  // Débloquer restaure la visibilité du match/de la conversation (blocks_between
+  // les filtrait) : invalider les 4 surfaces, symétriquement à blockUser.
   revalidatePath("/discover");
+  revalidatePath("/matches");
+  revalidatePath("/messages");
+  revalidatePath("/settings");
   return { ok: !error };
 }
 
@@ -62,7 +70,7 @@ export type ReportResult = { ok: boolean; error?: string };
  */
 export async function submitReport(input: {
   reportedId: string;
-  category: string;
+  category: ReportCategory;
   details?: string;
   messageId?: string;
 }): Promise<ReportResult> {

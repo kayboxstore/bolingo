@@ -60,19 +60,9 @@ export function ChevronDownIcon({ className }: { className?: string }) {
 }
 
 export function EllipsisIcon({ className }: { className?: string }) {
-  return (
-    <Icon
-      path="M6 12h.01M12 12h.01M18 12h.01"
-      className={className}
-      label="Options"
-    />
-  );
-}
-
-export function FlagIcon({ className }: { className?: string }) {
-  return (
-    <Icon path="M5 21V4m0 0 7 2 7-2v10l-7 2-7-2" className={className} />
-  );
+  // Décorative : le bouton parent porte le nom accessible (cohérent avec le
+  // reste du set — aria-hidden, jamais de label par défaut).
+  return <Icon path="M6 12h.01M12 12h.01M18 12h.01" className={className} />;
 }
 
 export function TrashIcon({ className }: { className?: string }) {
