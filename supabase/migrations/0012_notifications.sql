@@ -10,9 +10,14 @@
 -- le texte affiché est dérivé à la lecture.
 -- ============================================================================
 
-create type notification_type as enum ('new_match', 'new_message');
+-- Idempotent (rejouable, y compris via le SQL Editor) : CREATE TYPE n'a pas de
+-- `if not exists` natif → DO block qui avale le doublon.
+do $$ begin
+  create type notification_type as enum ('new_match', 'new_message');
+exception when duplicate_object then null;
+end $$;
 
-create table public.notifications (
+create table if not exists public.notifications (
   id           uuid primary key default gen_random_uuid(),
   recipient_id uuid not null references public.users(id) on delete cascade,
   type         notification_type not null,
@@ -23,13 +28,13 @@ create table public.notifications (
 );
 -- created_at + id : keyset avec départage (created_at seul saute une ligne si
 -- deux notifs partagent le même instant — cf. messages_page 0007).
-create index notifications_recipient_idx
+create index if not exists notifications_recipient_idx
   on public.notifications (recipient_id, created_at desc, id desc);
-create index notifications_unread_idx
+create index if not exists notifications_unread_idx
   on public.notifications (recipient_id) where read_at is null;
 -- Collapse : au plus UNE notif message non lue par (destinataire, conversation).
 -- UNIQUE → le ON CONFLICT de notify_new_message est réellement race-safe.
-create unique index notifications_msg_open_idx
+create unique index if not exists notifications_msg_open_idx
   on public.notifications (recipient_id, match_id)
   where type = 'new_message' and read_at is null;
 
