@@ -45,25 +45,35 @@ export async function POST(request: NextRequest) {
   }
 
   let deleted = 0;
-  for (const [bucket, paths] of byBucket) {
-    // Suppression par lots (payloads bornés).
-    for (let i = 0; i < paths.length; i += 100) {
-      const chunk = paths.slice(i, i + 100);
-      const { error: rmErr } = await admin.storage.from(bucket).remove(chunk);
-      if (rmErr) {
-        console.error(`storage cleanup: remove failed (${bucket})`, rmErr.message);
-      } else {
-        deleted += chunk.length;
+  let errored = false;
+  try {
+    for (const [bucket, paths] of byBucket) {
+      // Suppression par lots (payloads bornés).
+      for (let i = 0; i < paths.length; i += 100) {
+        const chunk = paths.slice(i, i + 100);
+        const { error: rmErr } = await admin.storage.from(bucket).remove(chunk);
+        if (rmErr) {
+          errored = true;
+          console.error(`storage cleanup: remove failed (${bucket})`, rmErr.message);
+        } else {
+          deleted += chunk.length;
+        }
       }
     }
+  } catch (e) {
+    errored = true;
+    console.error("storage cleanup: unexpected error", e);
   }
 
-  await admin.from("storage_cleanup_runs").insert({ deleted_count: deleted });
-  // Purge des lignes data_exports dont le fichier vient d'être nettoyé (> 24 h).
+  // Journalise + purge TOUJOURS, même après une erreur partielle.
+  const { error: logErr } = await admin
+    .from("storage_cleanup_runs")
+    .insert({ deleted_count: deleted });
+  if (logErr) console.error("storage cleanup: log insert failed", logErr.message);
   await admin
     .from("data_exports")
     .delete()
     .lt("created_at", new Date(Date.now() - 24 * 3600_000).toISOString());
 
-  return Response.json({ ok: true, deleted });
+  return Response.json({ ok: !errored, deleted }, { status: errored ? 500 : 200 });
 }

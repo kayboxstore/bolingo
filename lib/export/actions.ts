@@ -11,22 +11,14 @@ export type ExportResult =
   | { ok: false; error: "rate_limited" | "unavailable" | "failed" };
 
 /**
- * Export RGPD (portabilité). Génère un JSON des données de l'appelant, le
- * dépose dans le bucket privé `exports` (via service-role), et renvoie une URL
- * signée à durée limitée. Rate-limité (1 / heure). Un compte supprimé est déjà
- * bloqué par requireActiveMember (status != active).
+ * Export RGPD (portabilité). export_my_data() applique le rate-limit atomique
+ * (1/heure) AVANT d'assembler — donc une demande throttlée ne fait aucun travail
+ * Storage. On dépose ensuite le JSON dans le bucket privé `exports` (service-role)
+ * et on renvoie une URL signée à durée limitée. Compte supprimé/suspendu déjà
+ * bloqué par requireActiveMember.
  */
 export async function requestDataExport(): Promise<ExportResult> {
   const { supabase, user } = await requireActiveMember();
-
-  // Pré-check anti-spam (le vrai verrou atomique est record_data_export).
-  const { data: recent } = await supabase
-    .from("data_exports")
-    .select("id")
-    .eq("user_id", user.id)
-    .gt("created_at", new Date(Date.now() - 3600_000).toISOString())
-    .limit(1);
-  if (recent && recent.length > 0) return { ok: false, error: "rate_limited" };
 
   const admin = createAdminClient();
   if (!admin) {
@@ -36,10 +28,16 @@ export async function requestDataExport(): Promise<ExportResult> {
 
   const { data: json, error: rpcError } = await supabase.rpc("export_my_data");
   if (rpcError || !json) {
-    console.error("export_my_data failed", rpcError?.message);
-    return { ok: false, error: "failed" };
+    const rateLimited = (rpcError?.message ?? "")
+      .toLowerCase()
+      .includes("rate limited");
+    if (!rateLimited) console.error("export_my_data failed", rpcError?.message);
+    return { ok: false, error: rateLimited ? "rate_limited" : "failed" };
   }
 
+  // NB : si le process échoue entre cet upload et la génération de l'URL, le
+  // fichier reste orphelin dans `exports` — nettoyé sous 24 h par le job cron
+  // (borne connue ; le rate-limit a déjà été consommé côté RPC).
   const path = `${user.id}/${crypto.randomUUID()}.json`;
   const body = JSON.stringify(json, null, 2);
   const { error: upErr } = await admin.storage
@@ -48,16 +46,6 @@ export async function requestDataExport(): Promise<ExportResult> {
   if (upErr) {
     console.error("data export: upload failed", upErr.message);
     return { ok: false, error: "failed" };
-  }
-
-  // Verrou atomique du rate-limit (ferme la course du pré-check). En cas de
-  // course perdue, on nettoie le fichier tout juste uploadé.
-  const { error: recErr } = await supabase.rpc("record_data_export", {
-    p_path: path,
-  });
-  if (recErr) {
-    await admin.storage.from(BUCKET).remove([path]);
-    return { ok: false, error: "rate_limited" };
   }
 
   const { data: signed, error: signErr } = await admin.storage

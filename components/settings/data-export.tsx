@@ -1,7 +1,24 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { requestDataExport } from "@/lib/export/actions";
+import { requestDataExport, type ExportResult } from "@/lib/export/actions";
+
+type ExportError = Extract<ExportResult, { ok: false }>["error"];
+
+function errorMessage(error: ExportError): string {
+  switch (error) {
+    case "rate_limited":
+      return "Un export récent existe déjà. Réessaie dans une heure.";
+    case "unavailable":
+      return "Export temporairement indisponible.";
+    case "failed":
+      return "L'export a échoué. Réessaie.";
+    default: {
+      const _exhaustive: never = error;
+      return "L'export a échoué. Réessaie.";
+    }
+  }
+}
 
 /**
  * Bouton d'export RGPD. Demande la génération (server action), puis ouvre l'URL
@@ -19,16 +36,17 @@ export function DataExport() {
         () => ({ ok: false, error: "failed" }) as const,
       );
       if (res.ok) {
-        // URL signée (Content-Disposition: attachment) → téléchargement direct.
-        window.location.href = res.url;
+        // Téléchargement via ancre invisible (l'URL signée a Content-Disposition:
+        // attachment) — évite une navigation top-level vers l'URL signée.
+        const a = document.createElement("a");
+        a.href = res.url;
+        a.download = "bolingo-export.json";
+        a.rel = "noopener";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
       } else {
-        setError(
-          res.error === "rate_limited"
-            ? "Un export récent existe déjà. Réessaie dans une heure."
-            : res.error === "unavailable"
-              ? "Export temporairement indisponible."
-              : "L'export a échoué. Réessaie.",
-        );
+        setError(errorMessage(res.error));
       }
     });
   }
