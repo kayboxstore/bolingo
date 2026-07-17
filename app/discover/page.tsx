@@ -4,8 +4,7 @@ import { requireActiveMember } from "@/lib/auth/guards";
 import { loadDiscoveryBatch } from "@/lib/discover/queries";
 import { countUnseenMatches } from "@/lib/matches/queries";
 import { AppHeader } from "@/components/app-header";
-import { DiscoverDeck } from "@/components/discover/deck";
-import { DiscoveryFilters } from "@/components/discover/filters";
+import { DiscoverClient } from "@/components/discover/discover-client";
 
 export const metadata: Metadata = { title: "Découvrir" };
 
@@ -15,7 +14,7 @@ export default async function DiscoverPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("max_distance_km, age_min, age_max")
+    .select("max_distance_km, age_min, age_max, interested_in")
     .eq("user_id", user.id)
     .single();
   if (!profile) redirect("/onboarding");
@@ -30,16 +29,14 @@ export default async function DiscoverPage() {
       <AppHeader nav unseenMatches={unseenMatches} />
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-6 px-6 py-8">
         <h1 className="sr-only">Découvrir</h1>
-        <DiscoveryFilters
-          defaults={{
+        <DiscoverClient
+          initialBatch={batch}
+          initialFilters={{
             maxDistanceKm: profile.max_distance_km,
             ageMin: profile.age_min,
             ageMax: profile.age_max,
+            interestedIn: profile.interested_in ?? [],
           }}
-        />
-        <DiscoverDeck
-          initial={batch}
-          key={`${profile.max_distance_km}-${profile.age_min}-${profile.age_max}`}
         />
       </main>
     </div>

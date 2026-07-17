@@ -88,8 +88,8 @@ export function DiscoverDeck({ initial }: { initial: DiscoveryBatch }) {
             Plus de profils pour l&apos;instant
           </h2>
           <p className="text-body text-ink/70">
-            Reviens un peu plus tard, élargis ton rayon de recherche, ou
-            relance la découverte.
+            Aucun profil ne correspond pour l&apos;instant. Élargis tes critères
+            (âge, distance, genre) via les filtres, ou relance la découverte.
           </p>
         </div>
         <button

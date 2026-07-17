@@ -74,6 +74,16 @@ export function BellIcon({ className }: { className?: string }) {
   );
 }
 
+export function SlidersIcon({ className }: { className?: string }) {
+  // Trois rails horizontaux, chacun croisé par un curseur (tick vertical).
+  return (
+    <Icon
+      path="M4 6h16M9 4v4M4 12h16M15 10v4M4 18h16M8 16v4"
+      className={className}
+    />
+  );
+}
+
 export function TrashIcon({ className }: { className?: string }) {
   return (
     <Icon
