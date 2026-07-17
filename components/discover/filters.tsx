@@ -106,14 +106,14 @@ export function DiscoveryFilters({
         onClick={open}
         className="flex items-center gap-2 self-end rounded-btn border border-ink/15 px-4 py-2 font-display text-legend font-semibold text-ink transition hover:border-ink/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
       >
-        <SlidersIcon className="h-5 w-5 text-ink/70" />
+        <SlidersIcon className="h-6 w-6 text-ink/70" />
         Filtres
       </button>
 
       <dialog
         ref={dialogRef}
         aria-labelledby="filters-title"
-        className="w-[min(28rem,calc(100vw-2rem))] rounded-card bg-white p-0 text-ink shadow-lg backdrop:bg-ink/40"
+        className="w-[min(28rem,calc(100vw-2rem))] rounded-card bg-white p-0 text-ink shadow-sm backdrop:bg-ink/60"
       >
         <div className="flex flex-col gap-6 p-6">
           <div className="flex items-center justify-between">

@@ -30,9 +30,10 @@ type DiscoverRow = {
 };
 
 /**
- * Charge un lot de profils à découvrir. La RPC est SECURITY INVOKER : la RLS
- * s'applique, et elle ne renvoie jamais de coordonnées — seulement une
- * distance arrondie au km.
+ * Charge un lot de profils à découvrir. La RPC est SECURITY DEFINER (cf. 0003) :
+ * elle inline elle-même les prédicats de visibilité/blocage (la RLS de profiles
+ * ne protège donc pas ce chemin), et ne renvoie jamais de coordonnées — seulement
+ * une distance arrondie au km.
  */
 export async function loadDiscoveryBatch(
   exclude: string[] = [],
