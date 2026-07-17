@@ -61,6 +61,10 @@ begin
     raise exception 'rate limited' using errcode = 'check_violation';
   end if;
   insert into public.data_exports (user_id) values (uid);
+  -- Auto-purge du journal : on ne garde que la dernière heure (fenêtre du
+  -- rate-limit). Rien à nettoyer ailleurs — l'export n'écrit AUCUN fichier.
+  delete from public.data_exports
+  where user_id = uid and created_at < now() - interval '1 hour';
 
   select jsonb_build_object(
     'exported_at', now(),
@@ -144,13 +148,10 @@ revoke all on function public.export_my_data() from public;
 revoke execute on function public.export_my_data() from anon;
 grant execute on function public.export_my_data() to authenticated;
 
--- ------------------------------------------------------ bucket privé exports
--- Fichiers d'export (PII) : bucket privé, aucune policy client → seul le
--- service-role (server action / route cron) y écrit/lit/signe. Court-lived
--- (nettoyé sous 24 h par le job de 0014).
-insert into storage.buckets (id, name, public)
-values ('exports', 'exports', false)
-on conflict (id) do nothing;
+-- NB : AUCUN bucket d'export. L'export RGPD est diffusé en streaming direct par
+-- la Route Handler app/api/export/route.ts (réponse HTTP = le fichier), jamais
+-- persisté sur Storage, même temporairement. Aucune URL signée, aucune PII au
+-- repos. Le seul objet Storage nettoyé par le job (0014) = photos orphelines.
 
 -- --------------------------------------------------- log du nettoyage Storage
 create table if not exists public.storage_cleanup_runs (
@@ -167,13 +168,11 @@ revoke insert, update, delete on table public.storage_cleanup_runs from authenti
 -- ------------------------------------------- énumération des objets à purger
 -- Renvoie les objets à supprimer, pour la route cron (service-role) qui fait le
 -- vrai .remove() via l'API Storage (un DELETE SQL sur storage.objects ne
--- retirerait pas le fichier physique). Deux branches distinctes :
---  * profile-photos = détection d'ORPHELINS, avec DOUBLE VÉRIFICATION anti-bug :
---    `not exists` (NULL-safe, contrairement à `not in`) + ancienneté > 48 h
---    (marge upload en cours) → jamais un objet référencé ni un upload récent.
---  * exports = purge par TTL PUR (tout fichier d'export > 24 h, jetable par
---    conception ; pas une détection d'orphelins).
--- Réservé au rôle service.
+-- retirerait pas le fichier physique). Une seule cible : les photos ORPHELINES,
+-- avec DOUBLE VÉRIFICATION anti-bug : `not exists` (NULL-safe, contrairement à
+-- `not in`) + ancienneté > 48 h (marge upload en cours) → jamais un objet
+-- référencé ni un upload récent. (Pas de bucket d'export : l'export ne persiste
+-- rien.) Réservé au rôle service.
 create or replace function public.list_orphan_storage_paths()
 returns table (bucket text, path text)
 language sql stable security definer set search_path = ''
@@ -185,13 +184,7 @@ as $$
     and o.created_at < now() - interval '48 hours'
     and not exists (
       select 1 from public.profile_photos pp where pp.storage_path = o.name
-    )
-  union all
-  -- fichiers d'export de plus de 24 h
-  select 'exports'::text, o.name
-  from storage.objects o
-  where o.bucket_id = 'exports'
-    and o.created_at < now() - interval '24 hours';
+    );
 $$;
 revoke all on function public.list_orphan_storage_paths() from public, anon, authenticated;
 grant execute on function public.list_orphan_storage_paths() to service_role;

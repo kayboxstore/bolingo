@@ -65,15 +65,12 @@ export async function POST(request: NextRequest) {
     console.error("storage cleanup: unexpected error", e);
   }
 
-  // Journalise + purge TOUJOURS, même après une erreur partielle.
+  // Journalise TOUJOURS, même après une erreur partielle. (Le journal
+  // data_exports s'auto-purge dans export_my_data ; rien à nettoyer ici.)
   const { error: logErr } = await admin
     .from("storage_cleanup_runs")
     .insert({ deleted_count: deleted });
   if (logErr) console.error("storage cleanup: log insert failed", logErr.message);
-  await admin
-    .from("data_exports")
-    .delete()
-    .lt("created_at", new Date(Date.now() - 24 * 3600_000).toISOString());
 
   return Response.json({ ok: !errored, deleted }, { status: errored ? 500 : 200 });
 }

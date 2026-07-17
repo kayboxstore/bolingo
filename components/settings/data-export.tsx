@@ -1,54 +1,49 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { requestDataExport, type ExportResult } from "@/lib/export/actions";
-
-type ExportError = Extract<ExportResult, { ok: false }>["error"];
-
-function errorMessage(error: ExportError): string {
-  switch (error) {
-    case "rate_limited":
-      return "Un export récent existe déjà. Réessaie dans une heure.";
-    case "unavailable":
-      return "Export temporairement indisponible.";
-    case "failed":
-      return "L'export a échoué. Réessaie.";
-    default: {
-      const _exhaustive: never = error;
-      return "L'export a échoué. Réessaie.";
-    }
-  }
-}
+import { useState } from "react";
 
 /**
- * Bouton d'export RGPD. Demande la génération (server action), puis ouvre l'URL
- * signée à durée limitée → téléchargement du JSON. Rate-limité côté serveur.
+ * Bouton d'export RGPD. Récupère le JSON en streaming direct depuis la Route
+ * Handler /api/export (la réponse HTTP EST le fichier — aucune persistance
+ * Storage, aucune URL signée), puis déclenche le téléchargement via un blob
+ * local. Rate-limité côté serveur (429 → message dédié).
  */
 export function DataExport() {
-  const [pending, startTransition] = useTransition();
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function onExport() {
+  async function onExport() {
     if (pending) return;
+    setPending(true);
     setError(null);
-    startTransition(async () => {
-      const res = await requestDataExport().catch(
-        () => ({ ok: false, error: "failed" }) as const,
-      );
-      if (res.ok) {
-        // Téléchargement via ancre invisible (l'URL signée a Content-Disposition:
-        // attachment) — évite une navigation top-level vers l'URL signée.
-        const a = document.createElement("a");
-        a.href = res.url;
-        a.download = "bolingo-export.json";
-        a.rel = "noopener";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-      } else {
-        setError(errorMessage(res.error));
+    try {
+      const res = await fetch("/api/export", {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+      if (res.status === 429) {
+        setError("Un export récent existe déjà. Réessaie dans une heure.");
+        return;
       }
-    });
+      if (!res.ok) {
+        setError("L'export a échoué. Réessaie.");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "bolingo-export.json";
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("L'export a échoué. Réessaie.");
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
