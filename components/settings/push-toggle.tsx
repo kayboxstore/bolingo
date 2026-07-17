@@ -68,6 +68,10 @@ export function PushToggle() {
         if (res.ok) {
           setStatus("enabled");
         } else {
+          // Rollback navigateur : sans ligne serveur, un abonnement navigateur
+          // laissé actif afficherait « activé » sans jamais rien recevoir.
+          await unsubscribeFromPush().catch(() => null);
+          setStatus("disabled");
           setError("Enregistrement impossible. Réessaie.");
         }
       } catch {
@@ -81,8 +85,17 @@ export function PushToggle() {
     setError(null);
     startTransition(async () => {
       try {
-        const endpoint = await unsubscribeFromPush();
-        if (endpoint) await deletePushSubscription(endpoint);
+        // Serveur d'abord : si la suppression échoue, on reste « activé » (pas
+        // de désync). L'abonnement navigateur n'est retiré qu'ensuite.
+        const endpoint = await currentPushEndpoint();
+        if (endpoint) {
+          const res = await deletePushSubscription(endpoint);
+          if (!res.ok) {
+            setError("Désactivation impossible. Réessaie.");
+            return;
+          }
+        }
+        await unsubscribeFromPush();
         setStatus("disabled");
       } catch {
         setError("Désactivation impossible. Réessaie.");

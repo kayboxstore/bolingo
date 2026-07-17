@@ -51,10 +51,12 @@ create policy push_subscriptions_delete_own on public.push_subscriptions
   for delete using ((select auth.uid()) = user_id);
 
 -- --------------------------------------------- enregistrement d'un abonnement
--- DEFINER : supprime toute ligne portant le même endpoint (quel qu'en soit le
--- propriétaire) puis (ré)insère pour l'appelant → race-safe, et un endpoint ne
--- peut jamais être détourné vers un autre compte (l'owner = auth.uid(), non
--- paramétrable). Compte suspendu/supprimé/mineur bloqué : refuse.
+-- DEFINER : upsert atomique sur `endpoint` (UNIQUE global) → race-safe même sous
+-- appels concurrents (plusieurs onglets), et un endpoint réassigné bascule
+-- atomiquement vers son nouveau propriétaire (excluded.user_id). L'owner =
+-- auth.uid() (non paramétrable) : on ne peut abonner que soi-même. Compte
+-- suspendu/supprimé/mineur bloqué : refuse. Plafond par utilisateur (anti-gonfle
+-- de la table et du fan-out d'envoi) : on ne garde que les 10 plus récents.
 create or replace function public.save_push_subscription(
   p_endpoint text,
   p_p256dh text,
@@ -71,17 +73,35 @@ begin
   if not private.caller_active() then
     raise exception 'account not active' using errcode = 'check_violation';
   end if;
-  if p_endpoint is null or length(p_endpoint) = 0
-     or p_p256dh is null or length(p_p256dh) = 0
-     or p_auth is null or length(p_auth) = 0 then
+  -- Défense en profondeur : la RPC est grant to authenticated, donc appelable
+  -- directement via /rpc en contournant le zod du Server Action. On borne ici
+  -- aussi (endpoint https borné, clés bornées) — cohérent avec les CHECK en base.
+  if p_endpoint is null or p_endpoint not like 'https://%' or length(p_endpoint) > 1000
+     or p_p256dh is null or length(p_p256dh) = 0 or length(p_p256dh) > 200
+     or p_auth is null or length(p_auth) = 0 or length(p_auth) > 200 then
     raise exception 'invalid subscription' using errcode = 'check_violation';
   end if;
 
-  delete from public.push_subscriptions where endpoint = p_endpoint;
   insert into public.push_subscriptions
     (user_id, endpoint, p256dh, auth_key, user_agent, last_used_at)
   values
-    (auth.uid(), p_endpoint, p_p256dh, p_auth, left(p_user_agent, 300), now());
+    (auth.uid(), p_endpoint, p_p256dh, p_auth, left(p_user_agent, 300), now())
+  on conflict (endpoint) do update
+    set user_id      = excluded.user_id,
+        p256dh       = excluded.p256dh,
+        auth_key     = excluded.auth_key,
+        user_agent   = excluded.user_agent,
+        last_used_at = excluded.last_used_at;
+
+  -- Plafond : au plus 10 abonnements par compte ; purge les plus anciens.
+  delete from public.push_subscriptions
+  where user_id = auth.uid()
+    and id not in (
+      select id from public.push_subscriptions
+      where user_id = auth.uid()
+      order by coalesce(last_used_at, created_at) desc, id desc
+      limit 10
+    );
 end;
 $$;
 revoke all on function public.save_push_subscription(text, text, text, text) from public, anon;

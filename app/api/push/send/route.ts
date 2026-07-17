@@ -95,7 +95,8 @@ export async function POST(request: NextRequest) {
         if (status === 404 || status === 410) {
           dead.push(sub.endpoint); // abonnement expiré/invalide
         } else {
-          console.error("web push: send failed", status ?? e);
+          // Ne jamais logger `e` brut : la lib web-push y embarque l'endpoint.
+          console.error("web push: send failed", status ?? (e as Error)?.message);
         }
       }
     }),
