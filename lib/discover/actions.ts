@@ -1,9 +1,15 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireActiveMember } from "@/lib/auth/guards";
+import { GENDERS } from "@/lib/onboarding/validation";
 import { loadDiscoveryBatch, type DiscoveryBatch } from "@/lib/discover/queries";
+import {
+  AGE_MIN,
+  AGE_MAX,
+  DISTANCE_MAX_KM,
+  type DiscoveryFilters,
+} from "@/lib/discover/filters";
 
 const verdictSchema = z.object({
   likeeId: z.uuid(),
@@ -69,34 +75,45 @@ export async function fetchMoreProfiles(
   return loadDiscoveryBatch(exclude.success ? exclude.data : []);
 }
 
+export type ApplyFiltersResult =
+  | { ok: true; batch: DiscoveryBatch; filters: DiscoveryFilters }
+  | { ok: false; error: string };
+
+// Validation serveur systématique : âge >= 18 (plancher légal indépassable),
+// distance bornée à l'index géo, genre ∈ GENDERS (jamais de valeur inventée),
+// tranche non inversée. L'UI empêche déjà tout ça — c'est la défense serveur.
 const filtersSchema = z
   .object({
-    maxDistanceKm: z.coerce.number<number>().int().min(1).max(20000),
-    ageMin: z.coerce.number<number>().int().min(18).max(99),
-    ageMax: z.coerce.number<number>().int().min(18).max(99),
+    maxDistanceKm: z.coerce.number<number>().int().min(1).max(DISTANCE_MAX_KM),
+    ageMin: z.coerce.number<number>().int().min(AGE_MIN).max(AGE_MAX),
+    ageMax: z.coerce.number<number>().int().min(AGE_MIN).max(AGE_MAX),
+    interestedIn: z.array(z.enum(GENDERS)).min(1).max(GENDERS.length),
   })
   .refine((data) => data.ageMax >= data.ageMin, {
     message: "La tranche d'âge est inversée.",
     path: ["ageMax"],
   });
 
-export type FiltersState = { error?: string };
-
-/** Filtre rapide (rayon + tranche d'âge) : met à jour les préférences. */
-export async function updateDiscoveryFilters(
-  _prev: FiltersState,
-  formData: FormData,
-): Promise<FiltersState> {
+/**
+ * Filtre rapide (rayon + tranche d'âge + genre recherché) : met à jour les
+ * MÊMES colonnes que l'onboarding (un seul jeu de préférences, persistant) puis
+ * renvoie un lot frais — le deck se recharge en place, sans reload de page.
+ * Renvoie aussi les filtres normalisés pour que le client resynchronise son
+ * snapshot (base du « Réinitialiser »).
+ */
+export async function applyDiscoveryFilters(
+  input: DiscoveryFilters,
+): Promise<ApplyFiltersResult> {
   const { supabase, user } = await requireActiveMember();
 
-  const parsed = filtersSchema.safeParse({
-    maxDistanceKm: formData.get("maxDistanceKm"),
-    ageMin: formData.get("ageMin"),
-    ageMax: formData.get("ageMax"),
-  });
+  const parsed = filtersSchema.safeParse(input);
   if (!parsed.success) {
-    return { error: "Vérifie les filtres : la tranche d'âge est peut-être inversée." };
+    return {
+      ok: false,
+      error: "Vérifie tes critères : tranche d'âge, distance ou genre invalide.",
+    };
   }
+  const interestedIn = Array.from(new Set(parsed.data.interestedIn));
 
   const { error } = await supabase
     .from("profiles")
@@ -104,9 +121,22 @@ export async function updateDiscoveryFilters(
       max_distance_km: parsed.data.maxDistanceKm,
       age_min: parsed.data.ageMin,
       age_max: parsed.data.ageMax,
+      interested_in: interestedIn,
     })
     .eq("user_id", user.id);
-  if (error) return { error: "Une erreur est survenue. Réessaie dans un instant." };
+  if (error) {
+    return { ok: false, error: "Une erreur est survenue. Réessaie dans un instant." };
+  }
 
-  redirect("/discover"); // recharge le deck avec les nouveaux filtres
+  const batch = await loadDiscoveryBatch();
+  return {
+    ok: true,
+    batch,
+    filters: {
+      maxDistanceKm: parsed.data.maxDistanceKm,
+      ageMin: parsed.data.ageMin,
+      ageMax: parsed.data.ageMax,
+      interestedIn,
+    },
+  };
 }
