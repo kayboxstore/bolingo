@@ -10,6 +10,7 @@ import {
   DISTANCE_MAX_KM,
   type DiscoveryFilters,
 } from "@/lib/discover/filters";
+import { allowDiscovery } from "@/lib/discover/throttle";
 
 const verdictSchema = z.object({
   likeeId: z.uuid(),
@@ -70,7 +71,10 @@ export async function submitVerdict(
 export async function fetchMoreProfiles(
   excludeIds: string[],
 ): Promise<DiscoveryBatch> {
-  await requireActiveMember();
+  const { user } = await requireActiveMember();
+  // Throttle anti-moissonnage : un appel direct en boucle (hors garde-fou UI)
+  // est plafonné. Un lot vide non-épuisé fait juste patienter le deck.
+  if (!allowDiscovery(user.id)) return { cards: [], exhausted: false };
   const exclude = z.array(z.uuid()).max(50).safeParse(excludeIds);
   return loadDiscoveryBatch(exclude.success ? exclude.data : []);
 }
@@ -105,6 +109,14 @@ export async function applyDiscoveryFilters(
   input: DiscoveryFilters,
 ): Promise<ApplyFiltersResult> {
   const { supabase, user } = await requireActiveMember();
+
+  // Même plafond que le rechargement de lots : borne l'abus par appels directs.
+  if (!allowDiscovery(user.id)) {
+    return {
+      ok: false,
+      error: "Tu ajustes tes filtres trop vite. Patiente un instant.",
+    };
+  }
 
   const parsed = filtersSchema.safeParse(input);
   if (!parsed.success) {

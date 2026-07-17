@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { DiscoveryFilters } from "@/lib/discover/filters";
 import type { DiscoveryBatch } from "@/lib/discover/queries";
-import { DiscoveryFilters as FiltersPanel } from "@/components/discover/filters";
+import { DiscoveryFiltersPanel } from "@/components/discover/filters";
 import { DiscoverDeck } from "@/components/discover/deck";
 
 /**
@@ -31,7 +31,7 @@ export function DiscoverClient({
 
   return (
     <div className="flex flex-col gap-6">
-      <FiltersPanel defaults={filters} onApplied={onApplied} />
+      <DiscoveryFiltersPanel defaults={filters} onApplied={onApplied} />
       <DiscoverDeck key={generation} initial={batch} />
     </div>
   );

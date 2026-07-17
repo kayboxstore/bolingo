@@ -9,21 +9,17 @@ import {
   type DiscoveryFilters,
 } from "@/lib/discover/filters";
 import type { DiscoveryBatch } from "@/lib/discover/queries";
-import { GENDERS, GENDER_LABELS } from "@/lib/onboarding/validation";
+import {
+  GENDERS,
+  GENDER_LABELS,
+  type Gender,
+} from "@/lib/onboarding/validation";
 import { SlidersIcon } from "@/components/brand/icons";
-
-/** Valeurs par défaut de l'app (repli du « Réinitialiser » sans état antérieur). */
-const APP_DEFAULTS: DiscoveryFilters = {
-  maxDistanceKm: 50,
-  ageMin: AGE_MIN,
-  ageMax: AGE_MAX,
-  interestedIn: [...GENDERS],
-};
 
 const rangeClass =
   "w-full accent-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 rounded-full";
 
-export function DiscoveryFilters({
+export function DiscoveryFiltersPanel({
   defaults,
   onApplied,
 }: {
@@ -39,9 +35,11 @@ export function DiscoveryFilters({
   const [distance, setDistance] = useState(defaults.maxDistanceKm);
   const [ageMin, setAgeMin] = useState(defaults.ageMin);
   const [ageMax, setAgeMax] = useState(defaults.ageMax);
-  const [genders, setGenders] = useState<string[]>(defaults.interestedIn);
+  const [genders, setGenders] = useState<Gender[]>(defaults.interestedIn);
 
-  // Snapshot capturé à l'ouverture — base du « Réinitialiser ».
+  // Snapshot capturé à l'ouverture — base du « Réinitialiser ». Le profil a
+  // toujours des préférences (onboarding impose min 1 genre), donc `defaults`
+  // est toujours peuplé : pas de repli « valeurs app » à prévoir ici.
   const snapshotRef = useRef<DiscoveryFilters>(defaults);
 
   function syncFrom(f: DiscoveryFilters) {
@@ -52,21 +50,19 @@ export function DiscoveryFilters({
   }
 
   function open() {
-    const snap = defaults ?? APP_DEFAULTS;
-    snapshotRef.current = snap;
-    syncFrom(snap);
+    snapshotRef.current = defaults;
+    syncFrom(defaults);
     setError(null);
     dialogRef.current?.showModal();
   }
 
   function reset() {
-    // Reviens aux valeurs d'avant ouverture (ou défauts app si aucune).
-    const base = snapshotRef.current ?? APP_DEFAULTS;
-    syncFrom(base.interestedIn.length > 0 ? base : APP_DEFAULTS);
+    // Reviens aux valeurs d'avant ouverture (snapshot capturé à open()).
+    syncFrom(snapshotRef.current);
     setError(null);
   }
 
-  function toggleGender(g: string) {
+  function toggleGender(g: Gender) {
     setGenders((prev) =>
       prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g],
     );

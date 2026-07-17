@@ -2,6 +2,8 @@
 // "use server") : les Server Actions ne peuvent exporter que des fonctions async,
 // donc bornes et types vivent ici et sont importés par l'action ET les composants.
 
+import type { Gender } from "@/lib/onboarding/validation";
+
 // Borne distance UI = celle déjà en place à la brique Découverte (max RADII).
 // Le serveur ne l'assouplit jamais : un filtre ne peut pas dépasser cette borne
 // géographique, même si l'UI est contournée.
@@ -13,5 +15,5 @@ export type DiscoveryFilters = {
   maxDistanceKm: number;
   ageMin: number;
   ageMax: number;
-  interestedIn: string[];
+  interestedIn: Gender[];
 };
