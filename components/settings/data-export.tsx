@@ -25,6 +25,10 @@ export function DataExport() {
         setError("Un export récent existe déjà. Réessaie dans une heure.");
         return;
       }
+      if (res.status === 403) {
+        setError("Ta session a expiré. Reconnecte-toi puis réessaie.");
+        return;
+      }
       if (!res.ok) {
         setError("L'export a échoué. Réessaie.");
         return;

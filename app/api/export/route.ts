@@ -17,10 +17,9 @@ export async function GET() {
 
   const { data, error } = await supabase.rpc("export_my_data");
   if (error) {
-    const rateLimited = (error.message ?? "")
-      .toLowerCase()
-      .includes("rate limited");
-    if (rateLimited) {
+    // export_my_data() lève SQLSTATE 'PT429' quand le rate-limit (1/heure) est
+    // atteint — code dédié, pas de match fragile sur le texte du message.
+    if (error.code === "PT429") {
       return Response.json(
         { error: "Un export récent existe déjà. Réessaie dans une heure." },
         { status: 429 },

@@ -58,11 +58,16 @@ begin
     select 1 from public.data_exports
     where user_id = uid and created_at > now() - interval '1 hour'
   ) then
-    raise exception 'rate limited' using errcode = 'check_violation';
+    -- SQLSTATE dédié 'PT429' : PostgREST le mappe sur HTTP 429 et l'expose tel
+    -- quel côté client (error.code), donc la route le détecte sans se fier au
+    -- texte du message (distinct de 'account not active' / 'not authenticated').
+    raise exception 'rate limited' using errcode = 'PT429';
   end if;
   insert into public.data_exports (user_id) values (uid);
-  -- Auto-purge du journal : on ne garde que la dernière heure (fenêtre du
-  -- rate-limit). Rien à nettoyer ailleurs — l'export n'écrit AUCUN fichier.
+  -- Purge de la traîne au prochain appel du même utilisateur (pas une fenêtre
+  -- glissante globale) : borne le journal à au plus une ligne résiduelle par
+  -- utilisateur. Rien d'autre à nettoyer — l'export n'écrit AUCUN fichier. La
+  -- ligne qu'on vient d'insérer (created_at = now()) n'est jamais touchée.
   delete from public.data_exports
   where user_id = uid and created_at < now() - interval '1 hour';
 
