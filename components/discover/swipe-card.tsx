@@ -1,6 +1,12 @@
 "use client";
 
-import { forwardRef, useCallback, useImperativeHandle } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import {
   motion,
   useMotionValue,
@@ -23,24 +29,34 @@ const THRESHOLD = 120;
  * via un handle impératif. `prefers-reduced-motion` → aucune animation : le drag
  * est désactivé et la décision est prise instantanément par les boutons.
  */
-export const SwipeCard = forwardRef<
-  SwipeHandle,
-  {
-    children: React.ReactNode;
-    onDecision: (verdict: "like" | "pass") => void;
-    disabled?: boolean;
-  }
->(function SwipeCard({ children, onDecision, disabled }, ref) {
+type SwipeCardProps = {
+  children: React.ReactNode;
+  onDecision: (verdict: "like" | "pass") => void;
+  disabled?: boolean;
+};
+
+export const SwipeCard = forwardRef<SwipeHandle, SwipeCardProps>(
+  function SwipeCard({ children, onDecision, disabled }, ref) {
   const prefersReduced = useReducedMotion();
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-240, 0, 240], [-14, 0, 14]);
   const likeOpacity = useTransform(x, [40, 130], [0, 1]);
   const nopeOpacity = useTransform(x, [-130, -40], [1, 0]);
   const controls = useAnimationControls();
+  // Verrou synchrone anti double-décision : `disabled` (=isPending) ne passe à
+  // true qu'APRÈS la résolution du fling (~0,3 s) ; sur cette fenêtre, un
+  // double-tap ou un drag+clic déclencherait un second submitVerdict
+  // contradictoire + un glitch d'animation. La carte est remontée (nouvelle
+  // key) après décision → pas besoin de réinitialiser. Le state `decided`
+  // coupe aussi le drag pour empêcher une re-saisie en plein vol.
+  const decidedRef = useRef(false);
+  const [decided, setDecided] = useState(false);
 
   const fling = useCallback(
     (verdict: "like" | "pass") => {
-      if (disabled) return;
+      if (disabled || decidedRef.current) return;
+      decidedRef.current = true;
+      setDecided(true);
       if (prefersReduced) {
         onDecision(verdict);
         return;
@@ -60,6 +76,7 @@ export const SwipeCard = forwardRef<
   useImperativeHandle(ref, () => ({ swipe: fling }), [fling]);
 
   function onDragEnd(_event: unknown, info: PanInfo) {
+    if (decidedRef.current) return; // décision déjà en vol
     const power = info.offset.x + info.velocity.x * 0.12;
     if (power > THRESHOLD) fling("like");
     else if (power < -THRESHOLD) fling("pass");
@@ -76,7 +93,7 @@ export const SwipeCard = forwardRef<
     <motion.div
       className="relative touch-pan-y"
       style={{ x, rotate }}
-      drag={disabled ? false : "x"}
+      drag={disabled || decided ? false : "x"}
       dragElastic={0.6}
       dragConstraints={{ left: 0, right: 0 }}
       onDragEnd={onDragEnd}
@@ -84,18 +101,21 @@ export const SwipeCard = forwardRef<
       whileTap={{ cursor: "grabbing" }}
     >
       {/* Tampons d'intention, révélés proportionnellement au drag (bord photo,
-          sous le menu ⋯). Non-textuels critiques : bordure + token de couleur. */}
+          sous le menu ⋯). Échelle text-body (plus grande que les badges legend)
+          assumée : affordance de geste lisible à la volée. Fond blanc translucide
+          → contraste garanti quelle que soit la photo sous-jacente (plat, pas un
+          dégradé) ; couleur portée par bordure + token. */}
       <motion.div
         style={{ opacity: likeOpacity }}
         aria-hidden
-        className="pointer-events-none absolute left-4 top-6 z-20 -rotate-12 rounded-btn border-2 border-accent px-3 py-1 font-display text-body font-semibold text-accent"
+        className="pointer-events-none absolute left-4 top-6 z-20 -rotate-12 rounded-btn border-2 border-accent bg-white/85 px-4 py-1 font-display text-body font-semibold text-accent"
       >
         J&apos;aime
       </motion.div>
       <motion.div
         style={{ opacity: nopeOpacity }}
         aria-hidden
-        className="pointer-events-none absolute right-4 top-6 z-20 rotate-12 rounded-btn border-2 border-ink px-3 py-1 font-display text-body font-semibold text-ink"
+        className="pointer-events-none absolute right-4 top-6 z-20 rotate-12 rounded-btn border-2 border-ink bg-white/85 px-4 py-1 font-display text-body font-semibold text-ink"
       >
         Passer
       </motion.div>
