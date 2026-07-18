@@ -3,6 +3,7 @@ import { requireActiveMember } from "@/lib/auth/guards";
 import { loadBlocked } from "@/lib/moderation/queries";
 import { AppHeader } from "@/components/app-header";
 import { VisibilityToggle } from "@/components/settings/visibility-toggle";
+import { PushToggle } from "@/components/settings/push-toggle";
 import { BlockedList } from "@/components/settings/blocked-list";
 import { DataExport } from "@/components/settings/data-export";
 import { DeleteAccount } from "@/components/settings/delete-account";
@@ -30,6 +31,11 @@ export default async function SettingsPage() {
         <section className="flex flex-col gap-4">
           <h2 className="font-display text-h3 text-ink">Visibilité</h2>
           <VisibilityToggle initialVisible={profile?.is_visible ?? true} />
+        </section>
+
+        <section className="flex flex-col gap-4">
+          <h2 className="font-display text-h3 text-ink">Notifications push</h2>
+          <PushToggle />
         </section>
 
         <section className="flex flex-col gap-4">

@@ -42,6 +42,14 @@ export async function deleteAccount(): Promise<{ ok: boolean }> {
     return { ok: false };
   }
 
+  // 1b) Purge les abonnements Web Push (RLS delete-own) — cohérent avec
+  //     l'effacement RGPD : aucune donnée d'appareil ne subsiste. Best-effort.
+  const { error: pushErr } = await supabase
+    .from("push_subscriptions")
+    .delete()
+    .eq("user_id", user.id);
+  if (pushErr) console.error("account deletion: push cleanup failed", pushErr.message);
+
   // 2) Objets Storage — best-effort (session encore active, policy folder-owner).
   if (paths.length > 0) {
     const { error } = await supabase.storage.from(BUCKET).remove(paths);
