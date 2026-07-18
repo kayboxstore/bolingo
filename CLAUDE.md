@@ -97,6 +97,24 @@ supabase/
   the splash only). White stays legal only on rose-vif, so the contrast rule holds. `asLink={false}` renders
   the lockup as a decorative `<span aria-hidden>` for cases where an ancestor is already the link/click target.
 
+### Exceptions documentées à « flat design, zéro dégradé »
+
+La règle générale reste **flat, zéro dégradé, zéro ombre factice, zéro 3D**. Trois exceptions cadrées et
+**limitativement énumérées** — `design-system-auditor` doit les accepter sans les signaler, et continuer de
+**bloquer tout dégradé / ombre / effet 3D en dehors de ces cas précis** :
+
+1. **Splash screen** (déjà en place, cf. ci-dessus) — dégradé de marque assumé, scoped à `components/splash-screen.tsx`.
+2. **Overlay photo** — un dégradé **noir → transparent** en bas d'une photo de profil, **uniquement** pour garantir
+   la lisibilité d'un texte en surimpression (nom/âge/distance/prénom). C'est un moyen **fonctionnel** (contraste
+   du texte), pas décoratif : jamais sur un fond uni, jamais ailleurs qu'au-dessus d'une photo porteuse de texte.
+   Réservé aux cartes photo+texte (deck découverte, liste des matches, en-tête de conversation). Le texte en
+   surimpression reste blanc et doit rester lisible quelle que soit la photo sous-jacente.
+3. **Mouvement (Framer Motion)** — encouragé sur les **interactions physiques** (swipe, transitions de page,
+   feedback tactile « pressed », célébration de match). Ce n'est **pas** une dérogation à la palette : « flat »
+   décrit la géométrie (absence de relief/ombre/3D factices), pas l'absence d'animation. Toute animation ajoutée
+   respecte `prefers-reduced-motion` (dégrade vers un état statique équivalent, jamais une régression silencieuse)
+   et privilégie des `transform`/opacité peu coûteux (cible : bas de gamme Android).
+
 ## Data model (see migration for the source of truth)
 
 `users` (account/security, 1:1 with `auth.users`) · `profiles` (public dating profile, PostGIS `location`) ·
