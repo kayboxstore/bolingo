@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { fetchMoreProfiles, submitVerdict } from "@/lib/discover/actions";
 import type { DiscoveryBatch, DiscoveryCard } from "@/lib/discover/queries";
 import { HeartIcon } from "@/components/brand/logo";
 import { XIcon } from "@/components/brand/icons";
 import { ProfileCard } from "@/components/discover/profile-card";
+import { SwipeCard, type SwipeHandle } from "@/components/discover/swipe-card";
 import { MatchModal } from "@/components/discover/match-modal";
 import { ModerationMenu } from "@/components/moderation/moderation-menu";
 
@@ -21,6 +22,7 @@ export function DiscoverDeck({ initial }: { initial: DiscoveryBatch }) {
   const [isPending, startTransition] = useTransition();
   const [isRefilling, setIsRefilling] = useState(false);
   const [matchedWith, setMatchedWith] = useState<string | null>(null);
+  const swipeRef = useRef<SwipeHandle>(null);
 
   const current = cards[0] ?? null;
 
@@ -96,7 +98,7 @@ export function DiscoverDeck({ initial }: { initial: DiscoveryBatch }) {
           type="button"
           onClick={renew}
           disabled={isRefilling}
-          className="w-full rounded-btn bg-brand px-4 py-4 font-display text-body font-semibold text-brand-fg transition hover:bg-brand-hover disabled:bg-disabled disabled:text-ink/40"
+          className="w-full rounded-btn bg-brand px-4 py-4 font-display text-body font-semibold text-brand-fg transition hover:bg-brand-hover active:scale-[0.98] motion-reduce:active:scale-100 disabled:bg-disabled disabled:text-ink/40"
         >
           {isRefilling ? "Un instant…" : "Relancer la découverte"}
         </button>
@@ -107,42 +109,49 @@ export function DiscoverDeck({ initial }: { initial: DiscoveryBatch }) {
   return (
     <div className="flex flex-col gap-6">
       {matchModal}
-      <ProfileCard
-        card={current}
-        overlay={
-          <ModerationMenu
-            targetId={current.userId}
-            targetName={current.displayName}
-            triggerLabel={`Options de modération pour ${current.displayName}`}
-            onBlocked={skipCurrent}
-          />
-        }
-        actions={
-          <>
-            <button
-              type="button"
-              onClick={() => act("pass")}
-              disabled={isPending}
-              aria-label={`Passer ${current.displayName}`}
-              className="flex h-14 w-14 items-center justify-center rounded-full border border-ink/15 text-ink transition hover:border-ink/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-40"
-            >
-              <XIcon className="h-6 w-6" />
-            </button>
-            {/* Comp carte-profil-a : cercle plein rose vif, cœur blanc
-                (contraste non-textuel 3,2:1 ✔ ; le rose CTA reste réservé
-                aux CTA pleins rectangulaires). */}
-            <button
-              type="button"
-              onClick={() => act("like")}
-              disabled={isPending}
-              aria-label={`Aimer ${current.displayName}`}
-              className="flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white transition hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-40"
-            >
-              <HeartIcon className="h-6 w-6 text-white" />
-            </button>
-          </>
-        }
-      />
+      <SwipeCard
+        key={current.userId}
+        ref={swipeRef}
+        onDecision={act}
+        disabled={isPending}
+      >
+        <ProfileCard
+          card={current}
+          overlay={
+            <ModerationMenu
+              targetId={current.userId}
+              targetName={current.displayName}
+              triggerLabel={`Options de modération pour ${current.displayName}`}
+              onBlocked={skipCurrent}
+            />
+          }
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={() => swipeRef.current?.swipe("pass")}
+                disabled={isPending}
+                aria-label={`Passer ${current.displayName}`}
+                className="flex h-14 w-14 items-center justify-center rounded-full border border-ink/15 text-ink transition hover:border-ink/40 active:scale-95 motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-40"
+              >
+                <XIcon className="h-6 w-6" />
+              </button>
+              {/* Comp carte-profil-a : cercle plein rose vif, cœur blanc
+                  (contraste non-textuel 3,2:1 ✔ ; le rose CTA reste réservé
+                  aux CTA pleins rectangulaires). */}
+              <button
+                type="button"
+                onClick={() => swipeRef.current?.swipe("like")}
+                disabled={isPending}
+                aria-label={`Aimer ${current.displayName}`}
+                className="flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white transition hover:bg-accent-hover active:scale-95 motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-40"
+              >
+                <HeartIcon className="h-6 w-6 text-white" />
+              </button>
+            </>
+          }
+        />
+      </SwipeCard>
       {/* Région live toujours montée (sinon ignorée par les lecteurs d'écran) */}
       <p className="text-center text-legend text-ink/70" aria-live="polite">
         {cards.length <= REFILL_THRESHOLD && !exhausted
